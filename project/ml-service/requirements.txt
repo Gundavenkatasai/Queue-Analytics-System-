@@ -1,0 +1,10 @@
+ultralytics==8.0.195
+opencv-python==4.8.1.78
+numpy==1.24.3
+requests==2.31.0
+torch==2.0.1
+torchvision==0.15.2
+Flask==2.3.2
+Flask-CORS==4.0.0
+pymongo==4.6.1
+python-dotenv==1.0.0

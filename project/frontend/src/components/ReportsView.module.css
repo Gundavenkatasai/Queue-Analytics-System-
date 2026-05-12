@@ -1,0 +1,286 @@
+.reportsView {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.reportsView h2 {
+    margin: 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.cameraSelector {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.cameraSelector label {
+    font-weight: 600;
+    color: #333;
+}
+
+.cameraSelector select {
+    flex: 1;
+    max-width: 300px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+
+.templateGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.templateCard {
+    padding: 15px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: white;
+}
+
+.templateCard:hover {
+    border-color: #667eea;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.templateCard.selected {
+    border-color: #667eea;
+    background: #f0f4ff;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.templateCard h3 {
+    margin: 0 0 8px 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.templateCard p {
+    margin: 0 0 12px 0;
+    color: #666;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.metric {
+    font-size: 12px;
+    color: #667eea;
+    font-weight: 600;
+}
+
+.dateRangeSelector {
+    display: flex;
+    gap: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+
+.dateInput {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.dateInput label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+}
+
+.dateInput input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+
+.exportOptions {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.exportOptions h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.buttonGroup {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.exportButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.3s;
+}
+
+.exportButton:hover:not(:disabled) {
+    background: #764ba2;
+}
+
+.exportButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.reportPreview {
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.reportPreview h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.previewContent {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.previewSection {
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+}
+
+.previewSection h4 {
+    margin: 0 0 12px 0;
+    color: #333;
+    font-size: 14px;
+}
+
+.previewTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.previewTable td {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.previewTable .value {
+    font-weight: 600;
+    color: #667eea;
+    text-align: right;
+}
+
+.previewSection ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.previewSection li {
+    margin-bottom: 8px;
+    color: #666;
+}
+
+.savedReports {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.savedReports h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.reportsTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.reportsTable th {
+    background: #667eea;
+    color: white;
+    padding: 10px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.reportsTable td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.reportsTable tr:hover {
+    background: #f0f0f0;
+}
+
+.downloadBtn {
+    padding: 6px 10px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background 0.3s;
+}
+
+.downloadBtn:hover {
+    background: #764ba2;
+}
+
+@media (max-width: 768px) {
+    .reportsView {
+        padding: 15px;
+    }
+
+    .templateGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .dateRangeSelector {
+        flex-direction: column;
+    }
+
+    .buttonGroup {
+        flex-direction: column;
+    }
+
+    .previewContent {
+        grid-template-columns: 1fr;
+    }
+}

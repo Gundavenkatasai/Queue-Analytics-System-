@@ -1,0 +1,49 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.log
+
+# Laravel / PHP
+project/backend/vendor/
+project/backend/.env
+project/backend/storage/logs/*.log
+project/backend/storage/framework/cache/
+project/backend/storage/framework/sessions/
+project/backend/storage/framework/views/
+project/backend/bootstrap/cache/*.php
+project/backend/public/storage
+
+# Node / Frontend
+project/frontend/node_modules/
+project/frontend/.env
+project/frontend/dist/
+project/frontend/build/
+project/frontend/.vite/
+
+# ML Service
+project/ml-service/__pycache__/
+project/ml-service/*.pyc
+project/ml-service/recordings/
+project/ml-service/models/*.pkl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+system_startup.log

@@ -1,0 +1,231 @@
+.alertsView {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.alertsView h2 {
+    margin: 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.cameraSelect,
+.timeSelect,
+.refreshButton {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+}
+
+.refreshButton {
+    background: #667eea;
+    color: white;
+    border: none;
+    transition: background 0.3s;
+}
+
+.refreshButton:hover {
+    background: #764ba2;
+}
+
+.alertSummary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    padding: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+}
+
+.summaryItem {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.summaryLabel {
+    font-size: 12px;
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.summaryValue {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.alertsList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.alertItem {
+    display: flex;
+    gap: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid;
+    transition: all 0.3s;
+}
+
+.alertItem:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateX(4px);
+}
+
+.alertIcon {
+    display: flex;
+    align-items: flex-start;
+    font-size: 20px;
+    padding-top: 2px;
+}
+
+.alertContent {
+    flex: 1;
+}
+
+.alertHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.alertHeader h4 {
+    margin: 0;
+    color: #333;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.alertTime {
+    font-size: 12px;
+    color: #999;
+    white-space: nowrap;
+}
+
+.alertDetails {
+    display: flex;
+    gap: 15px;
+    font-size: 12px;
+    color: #666;
+    flex-wrap: wrap;
+}
+
+.dismissButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: #ddd;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.3s;
+}
+
+.dismissButton:hover {
+    background: #ff9800;
+    color: white;
+}
+
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px;
+    color: #999;
+}
+
+.configBox {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.configBox h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.configGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.configItem {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.configItem label {
+    font-size: 12px;
+    color: #666;
+    font-weight: 600;
+}
+
+.configItem input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.saveButton {
+    padding: 10px 20px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.3s;
+}
+
+.saveButton:hover {
+    background: #764ba2;
+}
+
+@media (max-width: 768px) {
+    .alertsView {
+        padding: 15px;
+    }
+
+    .controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .alertItem {
+        flex-direction: column;
+    }
+}

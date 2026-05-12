@@ -1,0 +1,172 @@
+.heatmapView {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.heatmapView h2 {
+    margin: 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.dateInput,
+.cameraSelect,
+.refreshButton {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.cameraSelect,
+.refreshButton {
+    background: white;
+    cursor: pointer;
+}
+
+.refreshButton {
+    background: #667eea;
+    color: white;
+    border: none;
+    transition: background 0.3s;
+}
+
+.refreshButton:hover {
+    background: #764ba2;
+}
+
+.heatmapContainer {
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+}
+
+.gridWrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.heatmapGrid {
+    display: grid;
+    grid-template-columns: repeat(20, 1fr);
+    gap: 1px;
+    background: #ddd;
+    padding: 1px;
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 500px;
+    aspect-ratio: 1;
+}
+
+.gridCell {
+    width: 100%;
+    aspect-ratio: 1;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.gridCell:hover {
+    transform: scale(1.1);
+    z-index: 1;
+}
+
+.legend {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+}
+
+.legendItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.legendColor {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.statsBox {
+    padding: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+}
+
+.statsBox h3 {
+    margin: 0 0 15px 0;
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.statItem {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.statItem label {
+    font-size: 12px;
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.statItem span {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .heatmapView {
+        padding: 15px;
+    }
+
+    .heatmapGrid {
+        max-width: 300px;
+    }
+
+    .controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .statsGrid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

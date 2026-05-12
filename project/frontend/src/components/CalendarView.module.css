@@ -1,0 +1,161 @@
+.calendarView {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.calendarView h2 {
+    margin: 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.dateSelector {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+
+.navButton {
+    padding: 8px 12px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s;
+}
+
+.navButton:hover {
+    background: #764ba2;
+}
+
+.dateInput {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.cameraSelect {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+}
+
+.chartContainer {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.chartContainer h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.recordingsList {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.recordingsList h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.recordingsTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.recordingsTable th {
+    background: #667eea;
+    color: white;
+    padding: 10px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.recordingsTable td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.recordingsTable tr:hover {
+    background: #f0f0f0;
+}
+
+.statusBadge {
+    display: inline-block;
+    padding: 4px 8px;
+    background: #4CAF50;
+    color: white;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.summaryBox {
+    padding: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+}
+
+.summaryBox h3 {
+    margin: 0 0 15px 0;
+}
+
+.summaryGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.summaryItem {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.summaryItem label {
+    font-size: 12px;
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.summaryItem span {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .calendarView {
+        padding: 15px;
+    }
+
+    .dateSelector {
+        flex-direction: column;
+    }
+
+    .summaryGrid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
