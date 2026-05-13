@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings, Camera, Target, AlertTriangle, Video, Database,
-  Globe, Palette, Info, Save, RefreshCw, Check, Shield, Cpu, Sliders
+  Globe, Info, Save, RefreshCw, Check, Shield, Cpu
 } from 'lucide-react';
 
 const SectionCard = ({ icon, title, children, delay = 0 }) => (

@@ -32,6 +32,7 @@ project/frontend/.vite/
 project/ml-service/__pycache__/
 project/ml-service/*.pyc
 project/ml-service/recordings/
+project/ml-service/storage/
 project/ml-service/models/*.pkl
 
 # OS

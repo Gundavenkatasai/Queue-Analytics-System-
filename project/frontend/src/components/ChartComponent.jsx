@@ -16,7 +16,7 @@ import {
     Legend,
     ResponsiveContainer,
 } from 'recharts';
-import styles from './ChartComponent.css';
+import styles from './ChartComponent.module.css';
 
 const ChartComponent = ({ data = [], isLoading = false, title = 'Analytics Chart' }) => {
     if (isLoading) {

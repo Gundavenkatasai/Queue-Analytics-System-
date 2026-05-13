@@ -68,9 +68,43 @@ const ReportsView = () => {
   const generateReport = async (format) => {
     setGenerating(true);
     setGeneratedFormat(format);
+    
+    // Simulate generation time
     await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Trigger an actual download of a mock file
+    try {
+      const content = format === 'pdf' ? '%PDF-1.4 mock content' : 'Date,Camera,People,Occupancy\n2025-05-11,camera_1,2847,42.5';
+      const type = format === 'pdf' ? 'application/pdf' : 'text/csv';
+      const blob = new Blob([content], { type });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `surveillance_report_${reportType}_${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed", err);
+    }
+
     setGenerating(false);
     setTimeout(() => setGeneratedFormat(null), 3000);
+  };
+
+  const downloadSavedReport = (report) => {
+    const format = report.name.split('.').pop();
+    const content = `Mock content for ${report.name}`;
+    const blob = new Blob([content], { type: format === 'pdf' ? 'application/pdf' : 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = report.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
   return (
@@ -318,7 +352,10 @@ const ReportsView = () => {
                     <p className="text-xs text-white font-medium truncate">{r.name}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{r.date} · {r.size}</p>
                   </div>
-                  <button className="p-1.5 text-gray-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+                  <button 
+                    onClick={() => downloadSavedReport(r)}
+                    className="p-1.5 text-gray-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                  >
                     <Download size={14} />
                   </button>
                 </div>

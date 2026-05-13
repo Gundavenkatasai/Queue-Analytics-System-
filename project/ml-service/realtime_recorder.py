@@ -43,6 +43,14 @@ class RealtimeVideoRecorder:
         self.recording_end_time = None     # datetime when recording should stop
         self._stop_sent = False            # guard: only send STOP once
 
+        # Auto-trigger: start the first recording after the pre-buffer fills
+        self._frames_written = 0
+        self._auto_trigger_done = False
+        self._auto_trigger_after_frames = self.fps * self.pre_buffer_seconds  # 150 frames (~10s)
+
+        # Track total completed recordings for verification
+        self.completed_recordings = 0
+
         # Worker thread for writing frames to disk (keeps main loop non-blocking)
         # Large queue: 10-sec pre-buffer (150) + 60-sec live (900) + headroom
         self.frame_queue = thread_queue.Queue(maxsize=5000)
@@ -61,7 +69,8 @@ class RealtimeVideoRecorder:
             f"RealtimeVideoRecorder ready | "
             f"{self.resolution} @ {self.fps} FPS | "
             f"Codec: {self.codec_name} | "
-            f"Record duration: {self.record_duration}s"
+            f"Record duration: {self.record_duration}s | "
+            f"Auto-trigger after: {self._auto_trigger_after_frames} frames"
         )
 
     # ------------------------------------------------------------------
@@ -146,6 +155,7 @@ class RealtimeVideoRecorder:
         - Always adds to the rolling pre-buffer.
         - If recording is active, enqueues the frame for the writer thread.
         - Stops recording automatically after self.record_duration wall-clock seconds.
+        - Auto-triggers the first recording once the pre-buffer is full.
         """
         if not self.running:
             return False
@@ -157,6 +167,17 @@ class RealtimeVideoRecorder:
 
         # Always keep the rolling pre-buffer up-to-date
         self.buffer.append(annotated)
+
+        # Track total frames written for auto-trigger logic
+        self._frames_written += 1
+
+        # Auto-trigger: start first recording once pre-buffer is full
+        if (not self._auto_trigger_done
+                and not self.is_recording
+                and self._frames_written >= self._auto_trigger_after_frames):
+            self._auto_trigger_done = True
+            logger.info("[AUTO] Pre-buffer full — auto-triggering first 60s recording")
+            self.trigger_recording()
 
         if self.is_recording:
             now = datetime.now()
@@ -172,8 +193,12 @@ class RealtimeVideoRecorder:
                 if not self._stop_sent:
                     self._stop_sent   = True
                     self.is_recording = False
-                    elapsed = (now - (self.recording_end_time - timedelta(seconds=self.record_duration))).total_seconds()
-                    logger.info(f"=== Recording complete ({elapsed:.1f}s elapsed) — finalising ===")
+                    trigger_time = self.recording_end_time - timedelta(seconds=self.record_duration)
+                    elapsed = (now - trigger_time).total_seconds()
+                    logger.info(
+                        f"=== Recording complete ({elapsed:.1f}s wall-clock, "
+                        f"target was {self.record_duration}s) — finalising ==="
+                    )
                     self.frame_queue.put(('STOP', None))
 
         return True
@@ -224,9 +249,12 @@ class RealtimeVideoRecorder:
                 end_time  = datetime.now()
                 duration  = (end_time - self.recording_start_time).total_seconds()
 
+                self.completed_recordings += 1
                 logger.info(
-                    f"Saved: {os.path.basename(self.current_filename)} | "
-                    f"{file_size/1024:.1f} KB | {duration:.1f}s"
+                    f"✅ Recording #{self.completed_recordings} saved: "
+                    f"{os.path.basename(self.current_filename)} | "
+                    f"{file_size/1024:.1f} KB | "
+                    f"Duration: {duration:.1f}s (target: {self.record_duration}s)"
                 )
 
                 # FFmpeg transcode in background (non-blocking)
@@ -350,9 +378,11 @@ class RealtimeVideoRecorder:
         if self.is_recording and self.recording_end_time:
             remaining = max(0, (self.recording_end_time - datetime.now()).total_seconds())
         return {
-            'is_recording':    self.is_recording,
-            'queue_size':      self.frame_queue.qsize(),
-            'remaining_secs':  round(remaining, 1),
+            'is_recording':       self.is_recording,
+            'queue_size':         self.frame_queue.qsize(),
+            'remaining_secs':     round(remaining, 1),
+            'completed_count':    self.completed_recordings,
+            'frames_buffered':    self._frames_written,
         }
 
     def stop_recording(self):

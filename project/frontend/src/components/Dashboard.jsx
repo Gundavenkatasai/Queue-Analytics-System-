@@ -123,14 +123,20 @@ const Dashboard = () => {
                     </div>
                     <p className="text-gray-400 text-sm mt-1">YOLOv8 Detection Engine • 15 FPS</p>
                 </div>
-                
-                <div className="flex items-center space-x-3 bg-black/40 px-4 py-2 rounded-lg border border-white/10">
-                    <div className="flex space-x-1 items-end h-4">
-                        <motion.div animate={{ height: [8, 16, 8] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1 bg-green-500 rounded-full"></motion.div>
-                        <motion.div animate={{ height: [12, 6, 12] }} transition={{ repeat: Infinity, duration: 1.2 }} className="w-1 bg-green-500 rounded-full"></motion.div>
-                        <motion.div animate={{ height: [16, 10, 16] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-1 bg-green-500 rounded-full"></motion.div>
+                                <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-2 bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20">
+                        <span className="w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                        <span className="text-primary font-bold text-xs tracking-widest uppercase">Simulator Active</span>
                     </div>
-                    <span className="text-green-500 font-semibold text-sm tracking-wide">LIVE SYSTEM ACTIVE</span>
+                    
+                    <div className="flex items-center space-x-3 bg-black/40 px-4 py-2 rounded-lg border border-white/10">
+                        <div className="flex space-x-1 items-end h-4">
+                            <motion.div animate={{ height: [8, 16, 8] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1 bg-green-500 rounded-full"></motion.div>
+                            <motion.div animate={{ height: [12, 6, 12] }} transition={{ repeat: Infinity, duration: 1.2 }} className="w-1 bg-green-500 rounded-full"></motion.div>
+                            <motion.div animate={{ height: [16, 10, 16] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-1 bg-green-500 rounded-full"></motion.div>
+                        </div>
+                        <span className="text-green-500 font-semibold text-sm tracking-wide uppercase">System Live</span>
+                    </div>
                 </div>
             </div>
 
@@ -174,7 +180,7 @@ const Dashboard = () => {
                 <StatCard 
                     title="Total Entries" 
                     value={liveData.entry_count}
-                    subtitle="Cumulative today"
+                    subtitle="Simulated cumulative today"
                     icon={<LogIn size={24} />}
                 />
                 <StatCard 

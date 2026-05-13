@@ -295,5 +295,105 @@
     "frames": 9,
     "stored_at": "2026-05-12T08:04:26.969184",
     "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_072605.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:25:55.292024",
+    "end_time": "2026-05-13T07:27:05.429654",
+    "duration": 70.13763,
+    "file_size": 2074483,
+    "stored_at": "2026-05-13T07:27:05.433479",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_074315.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:43:15.064292",
+    "end_time": "2026-05-13T07:44:17.123843",
+    "duration": 62.059551,
+    "file_size": 69695,
+    "stored_at": "2026-05-13T07:44:17.126203",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_074517.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:45:14.932393",
+    "end_time": "2026-05-13T07:46:17.917107",
+    "duration": 62.984714,
+    "file_size": 193108,
+    "stored_at": "2026-05-13T07:46:17.925692",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_075132.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:51:31.574512",
+    "end_time": "2026-05-13T07:52:34.014160",
+    "duration": 62.439648,
+    "file_size": 323605,
+    "stored_at": "2026-05-13T07:52:34.047988",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_075332.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:53:29.443081",
+    "end_time": "2026-05-13T07:54:34.702737",
+    "duration": 65.259656,
+    "file_size": 679114,
+    "stored_at": "2026-05-13T07:54:34.742311",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_075540.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:55:36.215889",
+    "end_time": "2026-05-13T07:56:47.577744",
+    "duration": 71.361855,
+    "file_size": 838588,
+    "stored_at": "2026-05-13T07:56:47.684834",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_075744.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:57:39.593447",
+    "end_time": "2026-05-13T07:58:47.546587",
+    "duration": 67.95314,
+    "file_size": 983196,
+    "stored_at": "2026-05-13T07:58:47.551372",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_075955.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T07:59:49.487044",
+    "end_time": "2026-05-13T08:00:58.750163",
+    "duration": 69.263119,
+    "file_size": 1173099,
+    "stored_at": "2026-05-13T08:00:58.790788",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_080200.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T08:01:53.074878",
+    "end_time": "2026-05-13T08:03:03.978964",
+    "duration": 70.904086,
+    "file_size": 1317097,
+    "stored_at": "2026-05-13T08:03:03.986825",
+    "storage": "local"
+  },
+  {
+    "filename": "event_camera_1_20260513_080401.mp4",
+    "camera_id": "camera_1",
+    "start_time": "2026-05-13T08:03:53.324082",
+    "end_time": "2026-05-13T08:05:03.656582",
+    "duration": 70.3325,
+    "file_size": 1423559,
+    "stored_at": "2026-05-13T08:05:03.666511",
+    "storage": "local"
   }
 ]

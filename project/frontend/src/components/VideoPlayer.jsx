@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, Download, VideoOff, Calendar, Camera, Clock, FileVideo, AlertCircle, XCircle } from 'lucide-react';
+import { Play, Pause, Download, Video, VideoOff, Calendar, Camera, Clock, FileVideo, AlertCircle, XCircle, Circle } from 'lucide-react';
 
 const VideoPlayer = () => {
   const [recordings, setRecordings] = useState([]);
@@ -96,19 +96,47 @@ const VideoPlayer = () => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  const triggerManualRecording = async () => {
+    try {
+      // We send a custom alert to trigger recording
+      await fetch('http://localhost:8000/api/alerts/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          camera_id: cameraId,
+          type: 'manual_trigger',
+          severity: 'high',
+          message: 'Manual recording triggered from dashboard'
+        })
+      });
+      alert('Recording triggered! It will appear here in about 70 seconds.');
+    } catch (error) {
+      console.error('Error triggering recording:', error);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Controls Header */}
+      {/* Header & Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card/40 p-4 rounded-xl border border-white/5">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <FileVideo className="text-primary" />
-            Video Recordings Archive
+            <Video className="text-primary" />
+            Event Recording Archive
           </h2>
-          <p className="text-sm text-gray-400 mt-1">Review event-based alerts and continuous footage.</p>
+          <p className="text-sm text-gray-400 mt-1">Review historical surveillance footage and events.</p>
         </div>
         
-        <div className="flex items-center space-x-4 bg-black/40 p-2 rounded-lg border border-white/10">
+        <div className="flex flex-wrap items-center gap-4">
+          <button 
+            onClick={triggerManualRecording}
+            className="flex items-center gap-2 px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 rounded-lg transition-all text-sm font-medium"
+          >
+            <Circle className="w-3 h-3 fill-primary animate-pulse" />
+            Record Now
+          </button>
+
+          <div className="flex items-center space-x-4 bg-black/40 p-2 rounded-lg border border-white/10">
           <div className="flex items-center space-x-2 px-2">
             <Camera className="w-4 h-4 text-gray-400" />
             <select 
@@ -134,6 +162,7 @@ const VideoPlayer = () => {
           </div>
         </div>
       </div>
+    </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         

@@ -129,7 +129,7 @@ class SurveillanceSystem:
         """Execute POST request in background"""
         def post_task():
             try:
-                requests.post(url, json=payload, timeout=5)
+                requests.post(url, json=payload, timeout=10)
             except Exception as e:
                 logger.error(f"Async API error: {e}")
         Thread(target=post_task, daemon=True).start()
@@ -217,6 +217,10 @@ class SurveillanceSystem:
         logger.info("🎬 Starting real-time detection loop...")
         logger.info("=" * 80)
         
+        # Periodic recording configuration
+        PERIODIC_RECORD_INTERVAL = 120  # 2 minutes
+        last_periodic_record = datetime.now() - timedelta(seconds=PERIODIC_RECORD_INTERVAL - 30) # Start soon
+        
         import time
         try:
             while self.running:
@@ -252,7 +256,14 @@ class SurveillanceSystem:
                             f"Exit: {analytics['exit_count']:3d} | "
                             f"Queue: {analytics['queue_detected']}"
                         )
-                
+                    
+                    # Periodic auto-record safety net
+                    now = datetime.now()
+                    secs_since = (now - last_periodic_record).total_seconds()
+                    if secs_since >= PERIODIC_RECORD_INTERVAL and not self.recorder.is_recording:
+                        logger.info(f"Triggering periodic recording ({secs_since:.0f}s since last)")
+                        self.recorder.trigger_recording()
+                        last_periodic_record = now
                 # Calculate processing time and FPS
                 process_time = time.time() - start_time
                 current_fps = 1.0 / max(process_time, 0.001)
@@ -325,7 +336,7 @@ class SurveillanceSystem:
         logger.info("=" * 80)
 
         # How often to force a recording even without an alert (seconds)
-        PERIODIC_RECORD_INTERVAL = 300   # 5 minutes
+        PERIODIC_RECORD_INTERVAL = 120   # 2 minutes
 
         self.running = True
         simulator = DetectionSimulator()
@@ -390,7 +401,8 @@ class SurveillanceSystem:
                         f"People: {data['people_count']:2d} | "
                         f"Queue: {data['queue_length']:2d} | "
                         f"Occ: {data['occupancy_percentage']:5.1f}% | "
-                        f"Rec: {rec_info}"
+                        f"Rec: {rec_info} | "
+                        f"Completed: {stats.get('completed_count', 0)}"
                     )
 
                 # ── 7. Pace to ~15 FPS ──────────────────────────────────────

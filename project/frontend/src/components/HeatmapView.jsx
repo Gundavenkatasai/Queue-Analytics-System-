@@ -16,9 +16,13 @@ const HeatmapView = () => {
         `http://localhost:8000/api/analytics/heatmap?camera_id=${cameraId}&date=${selectedDate}`
       );
       const data = await response.json();
-      if (data.status === 'success' && data.data.heatmap_data) {
-        setHeatmapData(data.data.heatmap_data);
-        const max = Math.max(...data.data.heatmap_data.flat());
+      
+      // Handle the response structure from AnalyticsTimelineController
+      const actualHeatmap = data.heatmap || (data.data && data.data.heatmap);
+      
+      if (actualHeatmap) {
+        setHeatmapData(actualHeatmap);
+        const max = Math.max(...actualHeatmap.flat());
         setMaxIntensity(max > 0 ? max : 1);
       }
     } catch (error) {

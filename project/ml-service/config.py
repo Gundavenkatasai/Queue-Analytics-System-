@@ -5,7 +5,7 @@ Configuration for ML Service
 # API Configuration
 API_BASE_URL = "http://localhost:8000/api"
 API_ENDPOINT = f"{API_BASE_URL}/analytics"
-API_TIMEOUT = 5  # seconds
+API_TIMEOUT = 10  # seconds
 
 # Camera Configuration
 CAMERA_ID = 0  # Webcam ID (0 for default camera)
