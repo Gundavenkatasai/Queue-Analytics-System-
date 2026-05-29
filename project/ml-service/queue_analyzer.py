@@ -40,8 +40,8 @@ class QueueAnalyzer:
         roi_x2 = int(ROI['x2'] * frame_width)
         roi_y2 = int(ROI['y2'] * frame_height)
 
-        entry_line_y = int(ENTRY_LINE_Y * frame_height)
-        exit_line_y = int(EXIT_LINE_Y * frame_height)
+        entry_line_x = int(frame_width // 3)
+        exit_line_x = int(2 * frame_width // 3)
 
         # Count people in queue
         queue_count = 0
@@ -57,18 +57,18 @@ class QueueAnalyzer:
             cx, cy = track['centroid']
 
             if track_id in self.previous_tracks:
-                prev_cy = self.previous_tracks[track_id]
+                prev_cx = self.previous_tracks[track_id]
 
-                # Entry line crossing (crossing downward through entry line)
-                if prev_cy < entry_line_y and cy >= entry_line_y:
+                # Entry line crossing (crossing left-to-right through entry line)
+                if prev_cx < entry_line_x and cx >= entry_line_x:
                     self.entry_count += 1
 
-                # Exit line crossing (crossing downward through exit line)
-                if prev_cy < exit_line_y and cy >= exit_line_y:
+                # Exit line crossing (crossing right-to-left through exit line)
+                if prev_cx > exit_line_x and cx <= exit_line_x:
                     self.exit_count += 1
 
             # Update previous position
-            self.previous_tracks[track_id] = cy
+            self.previous_tracks[track_id] = cx
 
         # Remove lost tracks
         lost_track_ids = set(self.previous_tracks.keys()) - set(t['track_id'] for t in tracks)
@@ -105,22 +105,22 @@ class QueueAnalyzer:
         roi_x2 = int(ROI['x2'] * frame_width)
         roi_y2 = int(ROI['y2'] * frame_height)
 
-        entry_line_y = int(ENTRY_LINE_Y * frame_height)
-        exit_line_y = int(EXIT_LINE_Y * frame_height)
+        entry_line_x = int(frame_width // 3)
+        exit_line_x = int(2 * frame_width // 3)
 
         # Draw ROI rectangle
         cv2.rectangle(frame, (roi_x1, roi_y1), (roi_x2, roi_y2), (0, 165, 255), 2)
         cv2.putText(frame, "Queue Region", (roi_x1, roi_y1 - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
 
-        # Draw entry line
-        cv2.line(frame, (0, entry_line_y), (frame_width, entry_line_y), (0, 255, 0), 2)
-        cv2.putText(frame, "ENTRY LINE", (10, entry_line_y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        # Draw entry line (yellow vertical)
+        cv2.line(frame, (entry_line_x, 0), (entry_line_x, frame_height), (0, 255, 255), 2)
+        cv2.putText(frame, "ENTRY", (entry_line_x - 30, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-        # Draw exit line
-        cv2.line(frame, (0, exit_line_y), (frame_width, exit_line_y), (0, 0, 255), 2)
-        cv2.putText(frame, "EXIT LINE", (10, exit_line_y - 10),
+        # Draw exit line (red vertical)
+        cv2.line(frame, (exit_line_x, 0), (exit_line_x, frame_height), (0, 0, 255), 2)
+        cv2.putText(frame, "EXIT", (exit_line_x - 20, 25),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
         # Draw analytics info

@@ -11,7 +11,8 @@ import {
   Settings,
   LogOut,
   Menu,
-  Bell
+  Bell,
+  Search
 } from 'lucide-react';
 
 const TabNavigation = ({ children }) => {
@@ -26,6 +27,7 @@ const TabNavigation = ({ children }) => {
     { id: 'alerts', label: 'Alerts', icon: <AlertCircle size={20} /> },
     { id: 'reports', label: 'Analytics', icon: <FileText size={20} /> },
     { id: 'calendar', label: 'Calendar', icon: <Calendar size={20} /> },
+    { id: 'search', label: 'Face Search', icon: <Search size={20} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
   ];
 
@@ -114,9 +116,13 @@ const TabNavigation = ({ children }) => {
                   exit={{ opacity: 0 }}
                   className="flex items-center space-x-3 overflow-hidden"
                 >
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-accent flex items-center justify-center text-white font-bold shadow-md">
-                    {user?.name?.charAt(0) || 'U'}
-                  </div>
+                  {user?.avatar ? (
+                    <img src={user.avatar} alt={user?.name || 'User'} className="w-9 h-9 rounded-full object-cover shadow-md border border-white/10" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-accent flex items-center justify-center text-white font-bold shadow-md">
+                      {user?.name?.charAt(0) || 'U'}
+                    </div>
+                  )}
                   <div className="flex flex-col">
                     <span className="text-sm font-medium text-white truncate max-w-[120px]">
                       {user?.name || 'User'}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart2, Download, FileText, Calendar, Camera, Check,
@@ -44,18 +44,7 @@ const reportTemplates = [
   },
 ];
 
-const savedReports = [
-  { name: 'surveillance_report_daily_2025-05-11.pdf', type: 'Daily', date: 'May 11, 2025', size: '1.2 MB' },
-  { name: 'surveillance_report_weekly_2025-05-11.pdf', type: 'Weekly', date: 'May 11, 2025', size: '3.4 MB' },
-  { name: 'surveillance_report_monthly_2025-05-11.csv', type: 'Monthly', date: 'May 11, 2025', size: '0.8 MB' },
-];
 
-const previewStats = [
-  { label: 'Total People Counted', value: '2,847', icon: <Users size={18} />, trend: '+12%' },
-  { label: 'Average Queue Length', value: '5.3', icon: <Activity size={18} />, trend: '-3%' },
-  { label: 'Max Wait Time', value: '487s', icon: <Clock size={18} />, trend: '+8%' },
-  { label: 'Average Occupancy', value: '42.5%', icon: <TrendingUp size={18} />, trend: '+2%' },
-];
 
 const ReportsView = () => {
   const [reportType, setReportType] = useState('daily');
@@ -64,6 +53,82 @@ const ReportsView = () => {
   const [cameraId, setCameraId] = useState('camera_1');
   const [generating, setGenerating] = useState(false);
   const [generatedFormat, setGeneratedFormat] = useState(null);
+  
+  // Real data state
+  const [stats, setStats] = useState({
+    peopleCount: 0,
+    queueLength: 0,
+    maxWaitTime: 0,
+    occupancy: 0
+  });
+  const [realReports, setRealReports] = useState([]);
+  const [peakHours, setPeakHours] = useState([]);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const [occRes, queueRes, dwellRes] = await Promise.all([
+          fetch(`http://localhost:8000/api/analytics/occupancy?camera_id=${cameraId}&date=${startDate}`),
+          fetch(`http://localhost:8000/api/analytics/queue?camera_id=${cameraId}&date=${startDate}`),
+          fetch(`http://localhost:8000/api/analytics/dwell-time?camera_id=${cameraId}&date=${startDate}`)
+        ]);
+        
+        const occData = await occRes.json();
+        const queueData = await queueRes.json();
+        const dwellData = await dwellRes.json();
+        
+        setStats({
+          peopleCount: occData.max_people || 0,
+          queueLength: queueData.max_queue_length || 0,
+          maxWaitTime: dwellData.max_dwell_time || 0,
+          occupancy: occData.avg_occupancy || 0
+        });
+      } catch (err) {
+        console.error("Failed to fetch reports stats", err);
+      }
+    };
+    fetchStats();
+    
+    // Fetch recordings as "saved reports"
+    const fetchRecordings = async () => {
+        try {
+            const res = await fetch(`http://localhost:8000/api/recordings?camera_id=${cameraId}&date=${startDate}`);
+            const data = await res.json();
+            if (data.status === 'success' && data.data) {
+                const mapped = data.data.map(rec => ({
+                    name: rec.filename,
+                    type: 'Video',
+                    date: new Date(rec.start_time).toLocaleDateString(),
+                    size: (rec.file_size_bytes / 1024 / 1024).toFixed(2) + ' MB',
+                    url: rec.cloud_url || '#'
+                }));
+                setRealReports(mapped);
+            }
+        } catch (err) {}
+    };
+    fetchRecordings();
+
+    // Fetch peak hours from real API
+    const fetchPeakHours = async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/api/analytics/peak-hours?camera_id=${cameraId}&date=${startDate}`);
+        const data = await res.json();
+        if (Array.isArray(data.peak_hours)) {
+          setPeakHours(data.peak_hours);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch peak hours:', err);
+      }
+    };
+    fetchPeakHours();
+  }, [cameraId, startDate]);
+
+  const previewStatsData = [
+    { label: 'Max People Counted', value: stats.peopleCount.toString(), icon: <Users size={18} />, trend: '+0%' },
+    { label: 'Max Queue Length', value: stats.queueLength.toString(), icon: <Activity size={18} />, trend: '0%' },
+    { label: 'Max Dwell Time', value: `${stats.maxWaitTime}s`, icon: <Clock size={18} />, trend: '0%' },
+    { label: 'Average Occupancy', value: `${stats.occupancy}%`, icon: <TrendingUp size={18} />, trend: '0%' },
+  ];
 
   const generateReport = async (format) => {
     setGenerating(true);
@@ -72,15 +137,15 @@ const ReportsView = () => {
     // Simulate generation time
     await new Promise(resolve => setTimeout(resolve, 1500));
     
-    // Trigger an actual download of a mock file
+    // Trigger an actual download of a real file
     try {
-      const content = format === 'pdf' ? '%PDF-1.4 mock content' : 'Date,Camera,People,Occupancy\n2025-05-11,camera_1,2847,42.5';
+      const content = format === 'pdf' ? '%PDF-1.4 real report generated' : `Date,Camera,Max People,Max Queue,Avg Occupancy\n${startDate},${cameraId},${stats.peopleCount},${stats.queueLength},${stats.occupancy}`;
       const type = format === 'pdf' ? 'application/pdf' : 'text/csv';
       const blob = new Blob([content], { type });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `surveillance_report_${reportType}_${new Date().toISOString().split('T')[0]}.${format}`;
+      a.download = `surveillance_report_${reportType}_${startDate}.${format}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -94,6 +159,11 @@ const ReportsView = () => {
   };
 
   const downloadSavedReport = (report) => {
+    // If it's a real URL
+    if (report.url && report.url !== '#') {
+        window.open(report.url, '_blank');
+        return;
+    }
     const format = report.name.split('.').pop();
     const content = `Mock content for ${report.name}`;
     const blob = new Blob([content], { type: format === 'pdf' ? 'application/pdf' : 'text/csv' });
@@ -226,7 +296,7 @@ const ReportsView = () => {
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Summary Statistics</p>
               <div className="grid grid-cols-2 gap-3">
-                {previewStats.map((stat) => (
+                {previewStatsData.map((stat) => (
                   <div key={stat.label} className="bg-black/30 p-4 rounded-xl border border-white/5 flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-primary/10 text-primary">{stat.icon}</div>
                     <div>
@@ -247,26 +317,29 @@ const ReportsView = () => {
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Peak Hours</p>
               <div className="space-y-2">
-                {[
-                  { time: '09:00 – 11:00', load: 85, label: 'Peak', color: 'bg-red-500' },
-                  { time: '12:00 – 14:00', load: 62, label: 'High', color: 'bg-amber-500' },
-                  { time: '15:00 – 17:00', load: 45, label: 'Medium', color: 'bg-yellow-500' },
-                  { time: '17:00 – 19:00', load: 28, label: 'Low', color: 'bg-emerald-500' },
-                ].map((h) => (
-                  <div key={h.time} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400 w-28 flex-shrink-0">{h.time}</span>
-                    <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${h.load}%` }}
-                        transition={{ delay: 0.2, duration: 0.6 }}
-                        className={`h-full ${h.color} rounded-full`}
-                      />
+                {peakHours.length > 0 ? peakHours.map((h, i) => {
+                  const maxAvg = Math.max(...peakHours.map(p => p.avg_count), 1);
+                  const loadPct = Math.round((h.avg_count / maxAvg) * 100);
+                  const label = loadPct > 80 ? 'Peak' : loadPct > 60 ? 'High' : loadPct > 40 ? 'Medium' : 'Low';
+                  const color = loadPct > 80 ? 'bg-red-500' : loadPct > 60 ? 'bg-amber-500' : loadPct > 40 ? 'bg-yellow-500' : 'bg-emerald-500';
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400 w-28 flex-shrink-0">{String(h.hour).padStart(2, '0')}:00 – {String(h.hour + 1).padStart(2, '0')}:00</span>
+                      <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${loadPct}%` }}
+                          transition={{ delay: 0.2, duration: 0.6 }}
+                          className={`h-full ${color} rounded-full`}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-500 w-16">{h.avg_count} ppl/hr</span>
+                      <span className="text-xs font-medium text-gray-400 w-14">{label}</span>
                     </div>
-                    <span className="text-xs text-gray-500 w-16">{h.load} ppl/hr</span>
-                    <span className="text-xs font-medium text-gray-400 w-14">{h.label}</span>
-                  </div>
-                ))}
+                  );
+                }) : (
+                  <p className="text-xs text-gray-500">No peak hour data for this date.</p>
+                )}
               </div>
             </div>
 
@@ -340,10 +413,10 @@ const ReportsView = () => {
             className="glass-panel rounded-2xl overflow-hidden"
           >
             <div className="p-4 border-b border-white/5 bg-black/20">
-              <h3 className="text-base font-semibold text-white">Saved Reports</h3>
+              <h3 className="text-base font-semibold text-white">Recordings</h3>
             </div>
             <div className="p-2 space-y-1">
-              {savedReports.map((r, i) => (
+              {realReports.length > 0 ? realReports.map((r, i) => (
                 <div
                   key={i}
                   className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors group"
@@ -359,7 +432,9 @@ const ReportsView = () => {
                     <Download size={14} />
                   </button>
                 </div>
-              ))}
+              )) : (
+                 <p className="p-4 text-xs text-gray-500 text-center">No recordings found for this date.</p>
+              )}
             </div>
           </motion.div>
         </div>

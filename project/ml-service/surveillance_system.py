@@ -67,7 +67,7 @@ class SurveillanceSystem:
             logger.info("✅ Tracker initialized")
             
             logger.info("📈 Initializing Queue Analyzer...")
-            self.analyzer = QueueAnalyzer(roi=ROI, entry_line_y=ENTRY_LINE_Y, exit_line_y=EXIT_LINE_Y)
+            self.analyzer = QueueAnalyzer(fps=CAMERA_FPS)
             logger.info("✅ Analyzer ready")
             
             logger.info("🎥 Initializing Video Recorder...")
@@ -182,10 +182,12 @@ class SurveillanceSystem:
         cv2.polylines(frame_copy, [roi_points], True, (0, 255, 0), 2)
         
         # Draw entry/exit lines
-        entry_y = int(ENTRY_LINE_Y * h)
-        exit_y = int(EXIT_LINE_Y * h)
-        cv2.line(frame_copy, (0, entry_y), (w, entry_y), (0, 255, 255), 2)
-        cv2.line(frame_copy, (0, exit_y), (w, exit_y), (255, 0, 255), 2)
+        entry_x = w // 3
+        exit_x = 2 * w // 3
+        cv2.line(frame_copy, (entry_x, 0), (entry_x, h), (0, 255, 255), 2)
+        cv2.line(frame_copy, (exit_x, 0), (exit_x, h), (0, 0, 255), 2)
+        cv2.putText(frame_copy, "ENTRY", (entry_x - 30, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        cv2.putText(frame_copy, "EXIT", (exit_x - 20, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         
         # Draw tracks
         if DRAW_BOXES:

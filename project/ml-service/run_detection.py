@@ -32,7 +32,7 @@ class SimplePersonTracker:
         self.crossed_entry = set()
         self.crossed_exit = set()
         
-    def update(self, detections, entry_line_y, exit_line_y):
+    def update(self, detections, entry_line_x, exit_line_x):
         """
         Update tracker with new detections
         detections: list of [x1, y1, x2, y2, conf]
@@ -65,28 +65,28 @@ class SimplePersonTracker:
                 self.tracks[track_id]['cy'] = cy
                 
                 # Check line crossings
-                prev_cy = self.tracks[track_id].get('prev_cy', cy)
+                prev_cx = self.tracks[track_id].get('prev_cx', cx)
                 
-                # Entry line crossing
-                if prev_cy < entry_line_y and cy >= entry_line_y:
+                # Entry line crossing (crossing left-to-right)
+                if prev_cx < entry_line_x and cx >= entry_line_x:
                     if track_id not in self.crossed_entry:
                         self.crossed_entry.add(track_id)
                         self.tracks[track_id]['entered'] = True
                 
-                # Exit line crossing
-                if prev_cy < exit_line_y and cy >= exit_line_y:
+                # Exit line crossing (crossing right-to-left)
+                if prev_cx > exit_line_x and cx <= exit_line_x:
                     if track_id not in self.crossed_exit:
                         self.crossed_exit.add(track_id)
                         self.tracks[track_id]['exited'] = True
                 
-                self.tracks[track_id]['prev_cy'] = cy
+                self.tracks[track_id]['prev_cx'] = cx
         
         # Create new tracks
         for i, (cx, cy, det) in enumerate(centroids):
             if i not in matched:
                 self.next_id += 1
                 self.tracks[self.next_id] = {
-                    'cx': cx, 'cy': cy, 'prev_cy': cy,
+                    'cx': cx, 'cy': cy, 'prev_cx': cx,
                     'entered': False, 'exited': False
                 }
         
@@ -106,9 +106,9 @@ class CameraDetectionSystem:
         self.model = None
         self.tracker = SimplePersonTracker()
         
-        # Line positions for entry/exit detection
-        self.entry_line_y = 240  # 1/3 of 640
-        self.exit_line_y = 320   # 1/2 of 640
+        # Line positions for entry/exit detection (vertical coordinates)
+        self.entry_line_x = 213  # 1/3 of 640
+        self.exit_line_x = 426   # 2/3 of 640
         
         logger.info("🎥 Real-Time Camera Detection System Initialized")
         logger.info(f"📡 API Endpoint: {self.api_endpoint}")
@@ -187,14 +187,14 @@ class CameraDetectionSystem:
     
     def draw_detections(self, frame, detections):
         """Draw detection boxes and lines on frame"""
-        # Draw entry line
-        cv2.line(frame, (0, self.entry_line_y), (640, self.entry_line_y), (0, 255, 0), 2)
-        cv2.putText(frame, "ENTRY LINE", (10, self.entry_line_y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        # Draw entry line (yellow vertical)
+        cv2.line(frame, (self.entry_line_x, 0), (self.entry_line_x, 480), (0, 255, 255), 2)
+        cv2.putText(frame, "ENTRY", (self.entry_line_x - 30, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         
-        # Draw exit line
-        cv2.line(frame, (0, self.exit_line_y), (640, self.exit_line_y), (0, 0, 255), 2)
-        cv2.putText(frame, "EXIT LINE", (10, self.exit_line_y - 10),
+        # Draw exit line (red vertical)
+        cv2.line(frame, (self.exit_line_x, 0), (self.exit_line_x, 480), (0, 0, 255), 2)
+        cv2.putText(frame, "EXIT", (self.exit_line_x - 20, 25),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         
         # Draw detection boxes
@@ -249,8 +249,8 @@ class CameraDetectionSystem:
                     # Update tracker
                     people_count, entry_count, exit_count = self.tracker.update(
                         detections,
-                        self.entry_line_y,
-                        self.exit_line_y
+                        self.entry_line_x,
+                        self.exit_line_x
                     )
                     
                     # Calculate queue (simple: people near bottom)

@@ -13,12 +13,12 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from collections import deque, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import threading
 import queue as thread_queue
 import logging
+from face_recognizer import FaceRecognizer
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class PersonTracker:
@@ -55,13 +55,23 @@ class PersonTracker:
                 last_cx, last_cy = track_info['last_position']
                 dist = np.sqrt((cx - last_cx)**2 + (cy - last_cy)**2)
                 
-                if dist < 50 and dist < min_dist:  # Matching threshold
+                if dist < 100 and dist < min_dist:  # Matching threshold (increased from 50 to 100 for robust tracking)
                     min_dist = dist
                     best_track = track_id
             
             if best_track is not None:
                 used_tracks.add(best_track)
+                previous_position = self.tracks[best_track].get('last_position')
+                self.tracks[best_track]['prev_position'] = previous_position
                 self.tracks[best_track]['last_position'] = (cx, cy)
+                
+                # Maintain X-coordinate history for robust line crossing checks
+                if 'x_history' not in self.tracks[best_track]:
+                    self.tracks[best_track]['x_history'] = []
+                self.tracks[best_track]['x_history'].append(cx)
+                if len(self.tracks[best_track]['x_history']) > 30:
+                    self.tracks[best_track]['x_history'].pop(0)
+                    
                 self.tracks[best_track]['frames_seen'] += 1
                 self.tracks[best_track]['last_seen'] = datetime.now()
                 matched_detections.append((*det, best_track))
@@ -70,17 +80,26 @@ class PersonTracker:
                 self.next_track_id += 1
                 self.tracks[self.next_track_id] = {
                     'last_position': (cx, cy),
+                    'prev_position': None,
                     'first_seen': datetime.now(),
                     'last_seen': datetime.now(),
                     'frames_seen': 1,
+                    'missed_frames': 0,
                     'entry_line': None,
-                    'exit_line': None
+                    'exit_line': None,
+                    'x_history': [cx]
                 }
                 matched_detections.append((*det, self.next_track_id))
+
+        for track_id, track_info in self.tracks.items():
+            if track_id not in used_tracks:
+                track_info['missed_frames'] = track_info.get('missed_frames', 0) + 1
+            else:
+                track_info['missed_frames'] = 0
         
-        # Remove stale tracks (not seen for 30 frames)
-        stale_tracks = [tid for tid, info in self.tracks.items() 
-                       if (datetime.now() - info['last_seen']).total_seconds() > 2]
+        # Remove stale tracks only after several missed frames to keep IDs stable
+        stale_tracks = [tid for tid, info in self.tracks.items()
+                       if info.get('missed_frames', 0) > 15]
         for tid in stale_tracks:
             del self.tracks[tid]
         
@@ -90,9 +109,10 @@ class PersonTracker:
 class RealTimeDetectionEngine:
     """Main detection engine with all analytics"""
     
-    def __init__(self, fps=15, resolution=(640, 480)):
+    def __init__(self, fps=15, resolution=(640, 480), alert_threshold=50):
         self.fps = fps
         self.resolution = resolution
+        self.alert_threshold = alert_threshold
         self.frame_skip = max(1, 30 // fps)  # Skip frames to maintain FPS
         self.frame_count = 0
         
@@ -100,9 +120,26 @@ class RealTimeDetectionEngine:
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.half = self.device == 'cuda'  # Use FP16 on GPU
         
+        # Allow ultralytics model loading in PyTorch 2.6+
+        try:
+            torch.serialization.add_safe_globals([
+                __import__('ultralytics.nn.tasks', fromlist=['DetectionModel']).DetectionModel,
+                __import__('ultralytics.nn.modules.head', fromlist=['Detect']).Detect,
+            ])
+        except:
+            pass  # Older PyTorch versions don't have this
+        
         # Load YOLOv8m
         self.model = YOLO('yolov8m.pt')
-        self.model.to(self.device)
+        try:
+            if self.device == 'cuda':
+                self.model.to('cuda')
+                logger.info("✓ Loaded YOLO model on CUDA GPU")
+        except Exception as e:
+            logger.warning(f"⚠️ CUDA loading failed, falling back to CPU: {e}")
+            self.device = 'cpu'
+            self.half = False
+            self.model.to('cpu')
         self.tracker = PersonTracker()
         
         # Analytics tracking
@@ -122,15 +159,31 @@ class RealTimeDetectionEngine:
         # Dwell time tracking
         self.dwell_times = []  # [person_id, duration_seconds]
         
-        # Entry/exit line (middle of frame horizontally)
-        self.entry_line_y = self.resolution[1] // 3
-        self.exit_line_y = 2 * self.resolution[1] // 3
+        # Entry/exit guides (vertical lines so movement is easy to read left-to-right)
+        self.entry_line_x = self.resolution[0] // 3
+        self.exit_line_x = 2 * self.resolution[0] // 3
+        self.line_margin = 20
+        
+        # Face recognition
+        self.face_recognizer = FaceRecognizer()
+        self.known_face_ids = {} # track_id -> face_id
+        self.processed_face_ids = set() # Track unique people counted in current session
         
         logger.info(f"Detection engine initialized: {fps} FPS, {resolution}")
     
     def detect_persons(self, frame):
         """Detect persons in frame using YOLOv8"""
-        results = self.model(frame, classes=0, conf=0.5, half=self.half, verbose=False)  # Class 0 = person
+        try:
+            results = self.model(frame, classes=0, conf=0.5, half=self.half, verbose=False)  # Class 0 = person
+        except Exception as e:
+            logger.warning(f"⚠️ Inference failed on device {self.device}, dynamically falling back to CPU: {e}")
+            self.device = 'cpu'
+            self.half = False
+            try:
+                self.model.to('cpu')
+            except:
+                pass
+            results = self.model(frame, classes=0, conf=0.5, half=False, verbose=False)
         
         detections = []
         for r in results:
@@ -141,29 +194,96 @@ class RealTimeDetectionEngine:
         
         return detections
     
-    def detect_entry_exit(self, tracked_persons):
-        """Detect persons crossing entry/exit lines"""
+    def detect_entry_exit(self, tracked_persons, frame):
+        """Detect persons crossing entry/exit lines with bidirectional counting.
+        
+        Layout (left to right):
+          0                    entry_line_x (1/3)         exit_line_x (2/3)              W
+          |-------- OUTSIDE ---|---- ZONE 1 (pre-entry) ---|---- ZONE 2 (inside) --------|EXIT SIDE
+        
+        ENTRY event: person crosses the YELLOW line (entry_line_x) from LEFT → RIGHT.
+        EXIT  event: person crosses the RED line    (exit_line_x)  from RIGHT → LEFT.
+                     (i.e. walking OUT, back through the exit/red line toward the camera)
+        """
         for det in tracked_persons:
             x1, y1, x2, y2, conf, track_id = det
-            cy = (y1 + y2) / 2
+            cx = (x1 + x2) / 2
             
             track_info = self.tracker.tracks.get(track_id)
             if not track_info:
                 continue
+
+            if track_info.get('frames_seen', 0) < 2:
+                continue
             
-            # Entry detection (crossing entry line from above)
-            if track_info['entry_line'] is None:
-                if cy > self.entry_line_y:
+            x_hist = track_info.get('x_history', [])
+            if len(x_hist) < 2:
+                continue
+
+            prev_cx = x_hist[-2] if len(x_hist) >= 2 else x_hist[0]
+
+            # ── ENTRY: yellow line crossed left-to-right ─────────────────────
+            # Only fire once per track
+            if track_info.get('entry_line') is None:
+                # Previous position was LEFT of entry line, current is RIGHT of entry line
+                if prev_cx < self.entry_line_x <= cx:
                     track_info['entry_line'] = True
                     self.entry_count += 1
-                    logger.info(f"Entry detected: {track_id} (Total: {self.entry_count})")
-            
-            # Exit detection (crossing exit line from above)
-            if track_info['exit_line'] is None:
-                if cy > self.exit_line_y:
+                    logger.info(f"ENTRY detected: track={track_id}, prev_cx={prev_cx:.0f} -> cx={cx:.0f} (Total entries: {self.entry_count})")
+
+            # ── EXIT: red line crossed right-to-left ─────────────────────────
+            # A person walking OUT moves from right of the exit line to the left.
+            # Only fire once per track.
+            if track_info.get('exit_line') is None:
+                # Previous position was RIGHT of exit line, current is LEFT of exit line
+                if prev_cx > self.exit_line_x >= cx:
                     track_info['exit_line'] = True
                     self.exit_count += 1
-                    logger.info(f"Exit detected: {track_id} (Total: {self.exit_count})")
+                    logger.info(f"EXIT detected: track={track_id}, prev_cx={prev_cx:.0f} -> cx={cx:.0f} (Total exits: {self.exit_count})")
+
+    def draw_overlay(self, frame, tracked_persons, occupancy, dwell):
+        """Draw detection overlays, including yellow/red counting guides."""
+        overlay = frame.copy()
+        self.draw_static_guides(overlay)
+
+        # Detection boxes and labels
+        for det in tracked_persons:
+            x1, y1, x2, y2, conf, track_id = det
+            x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
+            track_info = self.tracker.tracks.get(track_id, {})
+            color = (0, 255, 255) if track_info.get('entry_line') is None else (0, 200, 80)
+            if track_info.get('exit_line') is not None:
+                color = (0, 0, 255)
+
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                overlay,
+                f"ID {track_id}",
+                (x1, max(20, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                2,
+            )
+
+        # Summary panel
+        panel_y = 24
+        cv2.rectangle(overlay, (10, 10), (300, 120), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (10, 10), (300, 120), (255, 255, 255), 1)
+        cv2.putText(overlay, f"People: {len(tracked_persons)}", (20, panel_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(overlay, f"Entry: {self.entry_count}", (20, panel_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        cv2.putText(overlay, f"Exit: {self.exit_count}", (160, panel_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        cv2.putText(overlay, f"Occ: {occupancy:.1f}%", (20, panel_y + 56), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(overlay, f"Dwell Avg: {dwell['avg']:.1f}s", (20, panel_y + 84), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        return overlay
+
+    def draw_static_guides(self, frame):
+        """Draw the entry/exit guide lines on any frame."""
+        cv2.line(frame, (self.entry_line_x, 0), (self.entry_line_x, self.resolution[1]), (0, 255, 255), 2)
+        cv2.line(frame, (self.exit_line_x, 0), (self.exit_line_x, self.resolution[1]), (0, 0, 255), 2)
+        cv2.putText(frame, "ENTER>", (self.entry_line_x - 35, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
+        cv2.putText(frame, "<EXIT", (self.exit_line_x - 30, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2)
     
     def detect_queue(self, tracked_persons):
         """Detect queue formation (multiple people close together)"""
@@ -198,10 +318,10 @@ class RealTimeDetectionEngine:
             self.queue_length = 0
     
     def calculate_occupancy(self, tracked_persons):
-        """Calculate occupancy percentage"""
-        max_persons = 100  # Configurable max capacity
+        """Calculate occupancy percentage based on alert_threshold"""
+        max_persons = self.alert_threshold  # Use configurable capacity
         current_count = len(tracked_persons)
-        occupancy = (current_count / max_persons) * 100
+        occupancy = (current_count / max(1, max_persons)) * 100
         return min(occupancy, 100)
     
     def update_heatmap(self, tracked_persons):
@@ -220,6 +340,9 @@ class RealTimeDetectionEngine:
             grid_y = max(0, min(19, grid_y))
             
             self.heatmap_grid[grid_y, grid_x] += 1
+            
+            # Smooth heatmap (blur)
+            # This is done on the grid directly
         
         # Track hourly stats
         self.hourly_counts[current_hour]['total'] += len(tracked_persons)
@@ -271,7 +394,7 @@ class RealTimeDetectionEngine:
         tracked_persons = self.tracker.update(detections)
         
         # Detect entry/exit
-        self.detect_entry_exit(tracked_persons)
+        self.detect_entry_exit(tracked_persons, frame)
         
         # Detect queue
         self.detect_queue(tracked_persons)
@@ -297,20 +420,33 @@ class RealTimeDetectionEngine:
             'count': current_count,
             'occupancy': occupancy
         })
-        
+
+        # Smooth and normalize heatmap for transmission
+        if np.sum(self.heatmap_grid) > 0:
+            smoothed = cv2.GaussianBlur(self.heatmap_grid, (5, 5), 0)
+            # Normalize to 0-255 for visualization
+            normalized = cv2.normalize(smoothed, None, 0, 255, cv2.NORM_MINMAX)
+            heatmap_list = normalized.tolist()
+        else:
+            heatmap_list = [[0] * 20 for _ in range(20)]
+
+        # Create analytics summary
+        annotated_frame = self.draw_overlay(frame, tracked_persons, occupancy, dwell)
+
         analytics = {
-            'timestamp': datetime.now().isoformat(),
-            'people_count': current_count,
+            'camera_id': 'camera_1',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'people_count': len(tracked_persons),
             'occupancy_percentage': occupancy,
             'entry_count': self.entry_count,
             'exit_count': self.exit_count,
-            'queue_detected': self.queue_detected,
+            'queue_detected': self.queue_length > 3,
             'queue_length': self.queue_length,
-            'dwell_time_avg': dwell['avg'],
-            'dwell_time_max': dwell['max'],
-            'peak_hours': [(h, c['total'] // max(1, c['count'])) for h, c in peak_hours],
-            'heatmap': self.heatmap_grid.tolist(),
-            'frame': frame
+            'dwell_time_avg': round(dwell['avg'], 2),
+            'dwell_time_max': round(dwell['max'], 2),
+            'peak_hours': self.hourly_counts,
+            'heatmap': heatmap_list,
+            'frame': annotated_frame
         }
         
         logger.info(f"Frame {self.frame_count}: {current_count} people, "

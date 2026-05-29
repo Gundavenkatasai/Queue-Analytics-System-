@@ -16,6 +16,8 @@ class Alert extends Model
         'people_count',
         'queue_length',
         'occupancy_percentage',
+        'value',
+        'threshold',
         'acknowledged',
     ];
 

@@ -1,82 +1,66 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, AlertTriangle, X, ShieldAlert, Clock, Settings, Camera, Filter } from 'lucide-react';
+import { Bell, AlertTriangle, X, ShieldAlert, Clock, Settings, Camera, Filter, RefreshCw } from 'lucide-react';
 
 const AlertsView = () => {
   const [alerts, setAlerts] = useState([]);
   const [cameraId, setCameraId] = useState('camera_1');
   const [timeRange, setTimeRange] = useState('24h');
   const [loading, setLoading] = useState(false);
-  const [dismissedAlerts, setDismissedAlerts] = useState([]);
 
   const fetchAlerts = useCallback(async () => {
     try {
       setLoading(true);
-      // Simulated alerts - In real scenario would fetch from Laravel API
-      const mockAlerts = [
-        {
-          id: 1,
-          type: 'high_occupancy',
-          message: 'Critical Capacity Exceeded',
-          description: 'Area occupancy reached 94% (47 people). Evacuation protocol standby.',
-          timestamp: new Date(Date.now() - 5 * 60000),
-          severity: 'critical',
-          threshold: 50,
-          actual: 47,
-          cameraId: 'camera_1'
-        },
-        {
-          id: 2,
-          type: 'long_queue',
-          message: 'Abnormal Queue Formation',
-          description: '12 people waiting in checkout zone. Wait time exceeding SLA.',
-          timestamp: new Date(Date.now() - 15 * 60000),
-          severity: 'warning',
-          threshold: 10,
-          actual: 12,
-          cameraId: 'camera_1'
-        },
-        {
-          id: 3,
-          type: 'high_wait_time',
-          message: 'SLA Violation: Wait Time',
-          description: 'Average wait time reached 342 seconds. Additional staff required.',
-          timestamp: new Date(Date.now() - 30 * 60000),
-          severity: 'warning',
-          threshold: 300,
-          actual: 342,
-          cameraId: 'camera_1'
-        },
-        {
-          id: 4,
-          type: 'system_info',
-          message: 'Camera Calibration Complete',
-          description: 'Zone mapping updated for Camera 1 successfully.',
-          timestamp: new Date(Date.now() - 120 * 60000),
-          severity: 'info',
-          threshold: null,
-          actual: null,
-          cameraId: 'camera_1'
-        },
-      ];
-      
-      setAlerts(mockAlerts.filter(a => !dismissedAlerts.includes(a.id)));
+      const response = await fetch(
+        `http://localhost:8000/api/alerts?camera_id=${cameraId}&limit=100`
+      );
+      const data = await response.json();
+
+      if (data.status === 'success' && Array.isArray(data.data)) {
+        // Map MongoDB alert documents to display format
+        const mapped = data.data
+          .filter(a => !a.acknowledged) // Show unacknowledged only
+          .map(a => ({
+            id: a._id || a.id,
+            type: a.alert_type || 'unknown',
+            message: a.message || `${a.alert_type} alert`,
+            description: a.message || 'Alert triggered by the ML detection pipeline.',
+            timestamp: new Date(a.created_at || Date.now()),
+            severity: a.severity === 'high' ? 'critical' : (a.severity || 'warning'),
+            threshold: a.threshold ?? null,
+            actual: a.value ?? a.people_count ?? null,
+            cameraId: a.camera_id || cameraId,
+            mongoId: a._id || a.id,
+          }));
+        setAlerts(mapped);
+      } else {
+        setAlerts([]);
+      }
     } catch (error) {
       console.error('Error fetching alerts:', error);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
-  }, [dismissedAlerts]);
+  }, [cameraId]);
 
   useEffect(() => {
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 30000);
+    const interval = setInterval(fetchAlerts, 10000); // Poll every 10s
     return () => clearInterval(interval);
   }, [fetchAlerts]);
 
-  const dismissAlert = (alertId) => {
-    setDismissedAlerts([...dismissedAlerts, alertId]);
-    setAlerts(alerts.filter(a => a.id !== alertId));
+  const dismissAlert = async (alertId, mongoId) => {
+    // Acknowledge in backend
+    try {
+      await fetch(`http://localhost:8000/api/alerts/${mongoId}/acknowledge`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (e) {
+      console.warn('Failed to acknowledge alert in backend:', e);
+    }
+    setAlerts(prev => prev.filter(a => a.id !== alertId));
   };
 
   const getSeverityStyles = (severity) => {
@@ -106,7 +90,7 @@ const AlertsView = () => {
             <Bell className="text-primary" />
             Security & System Alerts
           </h2>
-          <p className="text-sm text-gray-400 mt-1">Monitor real-time threat detections and SLA violations.</p>
+          <p className="text-sm text-gray-400 mt-1">Real-time threat detections from MongoDB Atlas.</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3 bg-black/40 p-2 rounded-lg border border-white/10">
@@ -139,10 +123,13 @@ const AlertsView = () => {
 
           <div className="w-px h-6 bg-white/10 hidden sm:block"></div>
 
-          <div className="flex items-center space-x-2 px-2 text-gray-400">
-            <Filter className="w-4 h-4" />
-            <span className="text-sm cursor-pointer hover:text-white transition-colors">Filters</span>
-          </div>
+          <button 
+            onClick={fetchAlerts}
+            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white"
+            title="Refresh"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
@@ -155,10 +142,10 @@ const AlertsView = () => {
           </div>
 
           <AnimatePresence>
-            {loading ? (
+            {loading && alerts.length === 0 ? (
               <div className="glass-panel p-12 rounded-2xl flex flex-col items-center justify-center space-y-4">
                 <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-400 text-sm">Loading security feed...</p>
+                <p className="text-gray-400 text-sm">Loading from MongoDB Atlas...</p>
               </div>
             ) : alerts.length > 0 ? (
               alerts.map(alert => {
@@ -195,7 +182,7 @@ const AlertsView = () => {
                     </div>
 
                     <button 
-                      onClick={() => dismissAlert(alert.id)}
+                      onClick={() => dismissAlert(alert.id, alert.mongoId)}
                       className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
                       title="Acknowledge Alert"
                     >

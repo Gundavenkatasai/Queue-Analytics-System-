@@ -6,7 +6,7 @@ import requests
 import json
 import time
 from config import API_ENDPOINT, API_TIMEOUT
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class APIClient:
@@ -51,7 +51,11 @@ class APIClient:
                 'dwell_time_avg': analytics_data.get('dwell_time_avg', 0),
                 'dwell_time_max': analytics_data.get('dwell_time_max', 0),
                 'avg_wait_time': analytics_data.get('avg_wait_time', 0),
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'peak_hours': json.dumps([]),
+                'heatmap_data': json.dumps([]),
+                'session_id': 'default_session',
+                'alert_status': 'normal'
             }
 
             response = requests.post(

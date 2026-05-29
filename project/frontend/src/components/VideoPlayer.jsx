@@ -14,29 +14,62 @@ const VideoPlayer = () => {
   const [videoError, setVideoError] = useState(false);
   const videoRef = useRef(null);
 
-  const fetchRecordings = useCallback(async () => {
+  const fetchRecordings = useCallback(async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) {
+        setLoading(true);
+      }
       setVideoError(false);
       const response = await fetch(`http://localhost:8000/api/recordings?camera_id=${cameraId}&date=${selectedDate}`);
       const data = await response.json();
       if (data.status === 'success') {
-        setRecordings(data.data);
-        if (data.data.length > 0) {
-          setSelectedRecording(data.data[0]);
-        } else {
-          setSelectedRecording(null);
-        }
+        // Filter out corrupted/empty recordings (< 1 KB are invalid video files)
+        const allRecordings = Array.isArray(data.data) ? data.data : [];
+        const nextRecordings = allRecordings.filter(r => (r.file_size_bytes || 0) >= 1024);
+        setRecordings(nextRecordings);
+
+        setSelectedRecording((current) => {
+          if (!nextRecordings.length) {
+            return null;
+          }
+
+          if (current) {
+            const stillExists = nextRecordings.find((item) => item.id === current.id);
+            if (stillExists) {
+              if (
+                stillExists.id === current.id &&
+                stillExists.duration_seconds === current.duration_seconds &&
+                stillExists.file_size_bytes === current.file_size_bytes &&
+                stillExists.filename === current.filename
+              ) {
+                return current;
+              }
+              return stillExists;
+            }
+          }
+
+          return nextRecordings[0];
+        });
       }
     } catch (error) {
       console.error('Error fetching recordings:', error);
     } finally {
-      setLoading(false);
+      if (!isSilent) {
+        setLoading(false);
+      }
     }
   }, [cameraId, selectedDate]);
 
   useEffect(() => {
-    fetchRecordings();
+    fetchRecordings(false);
+  }, [fetchRecordings]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchRecordings(true);
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [fetchRecordings]);
 
   const handlePlayPause = () => {
@@ -50,6 +83,14 @@ const VideoPlayer = () => {
         });
       }
       setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleRetry = () => {
+    setVideoError(false);
+    if (videoRef.current) {
+      videoRef.current.load();
+      videoRef.current.play().catch(() => setVideoError(true));
     }
   };
 
@@ -94,6 +135,32 @@ const VideoPlayer = () => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  /**
+   * Parse a recording's display time.
+   * Priority: start_time field → filename timestamp → created_at → 'Unknown'
+   */
+  const formatRecordingDate = (rec, format = 'time') => {
+    // Try start_time field first
+    let dt = null;
+    if (rec.start_time) {
+      dt = new Date(rec.start_time);
+    }
+    // Fallback: parse from filename e.g. event_camera_1_20260516_213416.mp4
+    if ((!dt || isNaN(dt)) && rec.filename) {
+      const m = rec.filename.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+      if (m) {
+        dt = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+      }
+    }
+    // Fallback: created_at
+    if ((!dt || isNaN(dt)) && rec.created_at) {
+      dt = new Date(rec.created_at);
+    }
+    if (!dt || isNaN(dt)) return 'Unknown';
+    if (format === 'date') return dt.toLocaleDateString();
+    return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   const triggerManualRecording = async () => {
@@ -172,66 +239,45 @@ const VideoPlayer = () => {
             {selectedRecording ? (
               <div className="relative aspect-video bg-black rounded-xl overflow-hidden flex items-center justify-center border border-white/10">
                 <video
+                  key={selectedRecording.id}
                   ref={videoRef}
-                  src={`http://localhost:8000/api/recordings/${selectedRecording.id}/stream`}
+                  controls
+                  autoPlay
+                  muted
+                  playsInline
+                  preload="auto"
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
                   onTimeUpdate={handleTimeUpdate}
                   onLoadedMetadata={handleLoadedMetadata}
                   onEnded={() => setIsPlaying(false)}
                   onError={() => setVideoError(true)}
                   className={`w-full h-full object-contain ${videoError ? 'hidden' : 'block'}`}
-                />
+                >
+                  <source src={`http://localhost:8000/api/recordings/${selectedRecording.id}/stream`} type="video/mp4" />
+                  Your browser does not support the HTML5 video tag.
+                </video>
                 
                 {videoError && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-6 text-center">
                     <XCircle className="w-16 h-16 text-destructive mb-4" />
-                    <h3 className="text-xl font-semibold text-white mb-2">Playback Not Supported</h3>
+                    <h3 className="text-xl font-semibold text-white mb-2">Playback Failed</h3>
                     <p className="text-gray-400 text-sm max-w-md mb-6">
-                      This browser does not support the video codec used in this recording. Please download the file to view it locally or install FFmpeg on the server for live transcoding.
+                      The video could not be decoded by your browser. This usually happens with freshly-recorded files that are still being transcoded to H.264. Try clicking Retry in a few seconds, or download the file to view it locally.
                     </p>
-                    <button 
-                      onClick={handleDownload}
-                      className="btn-primary flex items-center gap-2 w-auto px-6"
-                    >
-                      <Download size={18} />
-                      Download Video File
-                    </button>
-                  </div>
-                )}
-                
-                {!videoError && (
-                  <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    
-                    {/* Progress Bar */}
-                    <div 
-                      className="w-full h-2 bg-white/20 rounded-full mb-4 cursor-pointer relative overflow-hidden group/progress"
-                      onClick={handleSeek}
-                    >
-                      <div 
-                        className="absolute top-0 left-0 h-full bg-primary"
-                        style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                      />
-                    </div>
-                    
-                    {/* Controls */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <button 
-                          onClick={handlePlayPause}
-                          className="text-white hover:text-primary transition-colors focus:outline-none"
-                        >
-                          {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
-                        </button>
-                        <span className="text-white text-sm font-medium tracking-wide">
-                          {formatTime(currentTime)} / {formatTime(duration)}
-                        </span>
-                      </div>
-                      
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={handleRetry}
+                        className="btn-primary flex items-center gap-2 px-6"
+                      >
+                        ↺ Retry
+                      </button>
                       <button 
                         onClick={handleDownload}
-                        className="text-white hover:text-primary transition-colors focus:outline-none"
-                        title="Download Recording"
+                        className="flex items-center gap-2 px-6 py-2 border border-white/20 rounded-lg text-white hover:bg-white/10 transition-all"
                       >
-                        <Download size={20} />
+                        <Download size={18} />
+                        Download
                       </button>
                     </div>
                   </div>
@@ -286,6 +332,7 @@ const VideoPlayer = () => {
                 <button
                   key={idx}
                   onClick={() => {
+                    setVideoError(false);
                     setSelectedRecording(rec);
                     setIsPlaying(true);
                   }}
@@ -303,7 +350,7 @@ const VideoPlayer = () => {
                   
                   <div className="flex-1 overflow-hidden">
                     <h4 className={`font-semibold truncate ${selectedRecording?.id === rec.id ? 'text-white' : 'text-gray-300'}`}>
-                      {new Date(rec.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}
+                      {formatRecordingDate(rec, 'time')}
                     </h4>
                     <div className="flex items-center text-xs text-gray-500 mt-1 gap-2">
                       <span className="bg-black/50 px-2 py-0.5 rounded text-gray-400">{rec.duration_seconds}s</span>

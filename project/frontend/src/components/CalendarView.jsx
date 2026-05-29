@@ -10,16 +10,39 @@ const CalendarView = () => {
   const [loading, setLoading] = useState(false);
   const [cameraId, setCameraId] = useState('camera_1');
 
+  const [stats, setStats] = useState({ avgPeople: 0, maxQueue: 0 });
+
   const fetchTimelineData = useCallback(async () => {
     try {
       setLoading(true);
+      
+      // Fetch raw timeline data
       const response = await fetch(`http://localhost:8000/api/analytics/timeline?camera_id=${cameraId}&date=${selectedDate}`);
       const data = await response.json();
-      if (data.status === 'success') {
+      
+      if (Array.isArray(data.data)) {
         setTimelineData(data.data);
+      } else {
+        setTimelineData([]);
       }
+
+      // Fetch aggregated occupancy data (for Avg People)
+      const occResponse = await fetch(`http://localhost:8000/api/analytics/occupancy?camera_id=${cameraId}&date=${selectedDate}`);
+      const occData = await occResponse.json();
+
+      // Fetch queue history data (for Max Queue)
+      const queueResponse = await fetch(`http://localhost:8000/api/analytics/queue?camera_id=${cameraId}&date=${selectedDate}`);
+      const queueData = await queueResponse.json();
+
+      setStats({
+        avgPeople: occData.avg_occupancy ? occData.avg_occupancy.toFixed(1) : 0,
+        maxQueue: queueData.max_queue_length || 0
+      });
+      
     } catch (error) {
-      console.error('Error fetching timeline:', error);
+      console.error('Error fetching timeline or stats:', error);
+      setTimelineData([]);
+      setStats({ avgPeople: 0, maxQueue: 0 });
     } finally {
       setLoading(false);
     }
@@ -29,11 +52,15 @@ const CalendarView = () => {
     try {
       const response = await fetch(`http://localhost:8000/api/recordings?camera_id=${cameraId}&date=${selectedDate}`);
       const data = await response.json();
-      if (data.status === 'success') {
+      // API returns { status, count, data }
+      if (data.status === 'success' && Array.isArray(data.data)) {
         setRecordings(data.data);
+      } else {
+        setRecordings([]);
       }
     } catch (error) {
       console.error('Error fetching recordings:', error);
+      setRecordings([]);
     }
   }, [cameraId, selectedDate]);
 
@@ -54,12 +81,7 @@ const CalendarView = () => {
     setSelectedDate(date.toISOString().split('T')[0]);
   };
 
-  const avgPeople = timelineData.length > 0
-    ? (timelineData.reduce((s, d) => s + d.people_count, 0) / timelineData.length).toFixed(1)
-    : 0;
-  const maxQueue = timelineData.length > 0
-    ? Math.max(...timelineData.map(d => d.queue_length))
-    : 0;
+  const { avgPeople, maxQueue } = stats;
 
   const displayDate = new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'

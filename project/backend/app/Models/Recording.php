@@ -12,11 +12,14 @@ class Recording extends Model
         'camera_id',
         'filename',
         'filepath',
+        'cloud_url',
         'duration_seconds',
         'people_count',
         'file_size_bytes',
         'frame_count',
         'fps',
+        'start_time',
+        'end_time',
     ];
 
     protected $casts = [
@@ -25,6 +28,8 @@ class Recording extends Model
         'file_size_bytes' => 'integer',
         'frame_count' => 'integer',
         'fps' => 'integer',
+        'start_time' => 'datetime',
+        'end_time' => 'datetime',
     ];
 
     public static function getRecordingsByCamera($cameraId = 'camera_1', $limit = 50)

@@ -8,17 +8,16 @@ import { AuthProvider } from './context/AuthContext';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
-// Use a mock client ID for demonstration. In production, this comes from env.
-const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '1234567890-mock-client-id.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
 root.render(
-  <React.StrictMode>
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AuthProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AuthProvider>
-    </GoogleOAuthProvider>
-  </React.StrictMode>
+  // NOTE: StrictMode intentionally removed — Google's GSI library doesn't support
+  // double-invocation in dev mode and throws "[GSI_LOGGER]: called multiple times"
+  <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    <AuthProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </AuthProvider>
+  </GoogleOAuthProvider>
 );

@@ -14,9 +14,11 @@ from datetime import datetime, timedelta
 import logging
 import threading
 import time
+import json
 import queue as thread_queue
 from collections import deque
-import json
+from pymongo import MongoClient
+import gridfs
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -65,6 +67,19 @@ class RealtimeVideoRecorder:
         self.recordings_file = "storage/analytics_recordings.json"
         self.ensure_recordings_file()
 
+        # MongoDB / GridFS
+        self.db_uri = os.getenv("MONGODB_URI")
+        self.db = None
+        self.fs = None
+        if self.db_uri:
+            try:
+                self.client = MongoClient(self.db_uri)
+                self.db = self.client["surveillance_db"]
+                self.fs = gridfs.GridFS(self.db)
+                logger.info("Connected to MongoDB GridFS for video storage")
+            except Exception as e:
+                logger.error(f"MongoDB/GridFS connection error: {e}")
+
         logger.info(
             f"RealtimeVideoRecorder ready | "
             f"{self.resolution} @ {self.fps} FPS | "
@@ -77,23 +92,45 @@ class RealtimeVideoRecorder:
     # Codec selection
     # ------------------------------------------------------------------
     def _pick_codec(self):
+        import numpy as np
         os.makedirs(self.output_dir, exist_ok=True)
-        probe_path = os.path.join(self.output_dir, '_codec_probe.mp4')
-        # Avoid avc1/H264/X264 — they require openh264-*.dll on Windows.
-        # FFmpeg post-processing converts to H.264 after the file is closed.
-        for name in ('mp4v', 'XVID', 'MJPG'):
+        # Priority: mp4v (MPEG-4) > XVID (AVI) > MJPG (AVI)
+        # Avoid avc1/OpenH264 on Windows because it often reports as available
+        # but fails at runtime when the matching DLL is missing or mismatched.
+        candidates = [
+            ('mp4v', '.mp4'),
+            ('XVID', '.avi'),
+            ('MJPG', '.avi'),
+        ]
+        blank = np.zeros((self.resolution[1], self.resolution[0], 3), dtype=np.uint8)
+        for name, ext in candidates:
+            probe_path = os.path.join(self.output_dir, f'_codec_probe{ext}')
             fourcc = cv2.VideoWriter_fourcc(*name)
             writer = cv2.VideoWriter(probe_path, fourcc, self.fps, self.resolution)
+            ok = False
             if writer.isOpened():
+                writer.write(blank)  # write one test frame
                 writer.release()
-                try:
-                    os.remove(probe_path)
-                except OSError:
-                    pass
-                logger.info(f"Selected video codec: {name}")
+                # Verify by reading the file back — a corrupt/stub file has 0 readable frames
+                if os.path.exists(probe_path) and os.path.getsize(probe_path) > 512:
+                    cap = cv2.VideoCapture(probe_path)
+                    ret, _ = cap.read()
+                    cap.release()
+                    ok = ret  # True only if at least one frame decoded successfully
+            else:
+                writer.release()
+            try:
+                os.remove(probe_path)
+            except OSError:
+                pass
+            if ok:
+                logger.info(f"Selected video codec: {name} (container: {ext})")
+                self._raw_ext = ext
                 return fourcc, name
-            writer.release()
+        self._raw_ext = '.mp4'
+        logger.warning("No working codec found — falling back to mp4v")
         return cv2.VideoWriter_fourcc(*'mp4v'), 'mp4v'
+
 
     # ------------------------------------------------------------------
     # Storage helpers
@@ -109,20 +146,29 @@ class RealtimeVideoRecorder:
     # ------------------------------------------------------------------
     def trigger_recording(self):
         """Start a 60-second (wall-clock) recording with 10-second pre-buffer."""
+        now = datetime.now()
         if self.is_recording:
-            logger.info("Recording already in progress — ignoring trigger.")
-            return False
+            new_end = now + timedelta(seconds=self.record_duration)
+            if new_end > self.recording_end_time:
+                self.recording_end_time = new_end
+                logger.info(f"Recording extended until: {self.recording_end_time.strftime('%H:%M:%S')}")
+            return True
 
         logger.info("=== EVENT TRIGGER: Starting 60-second recording ===")
 
-        # Build file path
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename  = f"event_{self.camera_id}_{timestamp}.mp4"
+        # Always save raw using the container that matches the codec
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        raw_ext   = getattr(self, '_raw_ext', '.mp4')
+        filename  = f"event_{self.camera_id}_{timestamp}.mp4"  # final public name
+        # Always record into a separate raw file so the final MP4 is only
+        # published after the chunk has been fully finalized.
+        raw_name = f"event_{self.camera_id}_{timestamp}_raw{raw_ext}"
+        raw_path  = os.path.join(self.output_dir, raw_name)
         filepath  = os.path.join(self.output_dir, filename)
 
         # Set timing BEFORE flipping is_recording so write_frame can read them
-        now = datetime.now()
-        self.current_filename      = filepath
+        self.current_filename      = filepath     # final .mp4 path (after transcode)
+        self.current_raw_path      = raw_path     # intermediate .avi path (written by OpenCV)
         self.recording_start_time  = now - timedelta(seconds=len(self.buffer) / self.fps)
         self.recording_end_time    = now + timedelta(seconds=self.record_duration)
         self._stop_sent            = False
@@ -130,8 +176,8 @@ class RealtimeVideoRecorder:
         # Snapshot the pre-buffer NOW (it keeps changing as new frames arrive)
         buffer_snapshot = list(self.buffer)
 
-        # Tell the worker to open the file
-        self.frame_queue.put(('START', filepath))
+        # Tell the worker to open the RAW intermediate file (AVI for MJPG)
+        self.frame_queue.put(('START', raw_path))
 
         # Dump pre-buffer frames (these are NOT counted toward the 60-second budget)
         for frame in buffer_snapshot:
@@ -242,30 +288,75 @@ class RealtimeVideoRecorder:
         try:
             self.current_video.release()
             self.current_video = None
-            logger.info(f"VideoWriter released: {os.path.basename(self.current_filename or '')}")
 
-            if self.current_filename and os.path.exists(self.current_filename):
-                file_size = os.path.getsize(self.current_filename)
+            raw_path   = getattr(self, 'current_raw_path', self.current_filename)
+            final_path = self.current_filename
+
+            # Sleep briefly to let OpenCV close the file handle
+            time.sleep(0.5)
+
+            # Wait for file to be unlocked and ready under Windows
+            unlocked = False
+            for i in range(10):  # Try for up to 5 seconds
+                try:
+                    if raw_path and os.path.exists(raw_path):
+                        with open(raw_path, 'rb') as f:
+                            pass
+                        unlocked = True
+                        break
+                except IOError:
+                    logger.info(f"File {raw_path} is still locked by OS, waiting 0.5s...")
+                    time.sleep(0.5)
+            
+            if not unlocked:
+                logger.warning(f"File {raw_path} remained locked after 5s! Proceeding anyway.")
+
+            logger.info(f"VideoWriter released: {os.path.basename(raw_path)}")
+
+            if raw_path and os.path.exists(raw_path):
+                file_size = os.path.getsize(raw_path)
                 end_time  = datetime.now()
                 duration  = (end_time - self.recording_start_time).total_seconds()
 
                 self.completed_recordings += 1
                 logger.info(
-                    f"✅ Recording #{self.completed_recordings} saved: "
-                    f"{os.path.basename(self.current_filename)} | "
+                    f"✅ Recording #{self.completed_recordings} raw saved: "
+                    f"{os.path.basename(raw_path)} | "
                     f"{file_size/1024:.1f} KB | "
-                    f"Duration: {duration:.1f}s (target: {self.record_duration}s)"
+                    f"Duration: {duration:.1f}s"
                 )
 
-                # FFmpeg transcode in background (non-blocking)
-                src = self.current_filename
-                threading.Thread(
-                    target=self._try_ffmpeg_transcode, args=(src,), daemon=True
-                ).start()
+                # Finalize the recording before publishing metadata so the UI
+                # never sees a half-finished or invalid file.
+                # If raw_path already equals final_path, transcode through a temp
+                # file first so we never overwrite the source while reading it.
+                success = False
+                transcode_target = final_path
+                temp_target = None
+                if raw_path == final_path:
+                    temp_target = final_path + '.transcode.mp4'
+                    transcode_target = temp_target
 
-                # Queue metadata upload
+                success = self._try_ffmpeg_transcode(raw_path, transcode_target)
+                if not success:
+                    success = self._fallback_reencode_to_mp4(raw_path, transcode_target)
+
+                if success and temp_target and os.path.exists(temp_target):
+                    try:
+                        os.replace(temp_target, final_path)
+                    except OSError as move_error:
+                        logger.warning(f"Unable to move transcoded file into place: {move_error}")
+                        success = False
+
+                if os.path.exists(final_path):
+                    file_size = os.path.getsize(final_path)
+                else:
+                    file_size = os.path.getsize(raw_path)
+
+                # Queue metadata upload — uses the final path
                 self.upload_queue.put({
-                    'filepath':   self.current_filename,
+                    'filepath':   final_path,
+                    'raw_path':   raw_path,
                     'camera_id':  self.camera_id,
                     'start_time': self.recording_start_time,
                     'end_time':   end_time,
@@ -278,35 +369,103 @@ class RealtimeVideoRecorder:
     # ------------------------------------------------------------------
     # FFmpeg H.264 post-transcode
     # ------------------------------------------------------------------
-    def _try_ffmpeg_transcode(self, filepath):
-        tmp_path = filepath + '.h264tmp.mp4'
+    def _try_ffmpeg_transcode(self, src_path, dst_path):
+        """Transcode src_path (raw AVI/MJPG) to dst_path (H.264 MP4)."""
         try:
-            result = subprocess.run(
-                [
-                    'ffmpeg', '-y', '-i', filepath,
-                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-                    '-movflags', '+faststart', tmp_path
-                ],
-                capture_output=True, timeout=300
-            )
-            if result.returncode == 0 and os.path.exists(tmp_path):
-                os.replace(tmp_path, filepath)
-                logger.info(f"[FFmpeg] H.264 transcode OK: {os.path.basename(filepath)}")
+            local_ffmpeg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg.exe")
+            ffmpeg_cmd = local_ffmpeg if os.path.exists(local_ffmpeg) else "ffmpeg"
+            logger.info(f"[FFmpeg] Using path/command: {ffmpeg_cmd}")
+
+            abs_src = os.path.abspath(src_path)
+            abs_dst = os.path.abspath(dst_path)
+            logger.info(f"[FFmpeg] Transcoding: {abs_src} -> {abs_dst}")
+
+            if os.name == 'nt':
+                # Under Windows, command strings with shell=True are much more robust with spaces
+                cmd_str = f'"{ffmpeg_cmd}" -y -i "{abs_src}" -c:v libx264 -preset fast -crf 23 -movflags +faststart "{abs_dst}"'
+                logger.info(f"[FFmpeg] Running command: {cmd_str}")
+                result = subprocess.run(
+                    cmd_str,
+                    shell=True,
+                    capture_output=True,
+                    timeout=300
+                )
             else:
-                stderr = result.stderr.decode(errors='ignore')[-300:]
-                logger.warning(f"[FFmpeg] Transcode failed (rc={result.returncode}): {stderr}")
+                result = subprocess.run(
+                    [
+                        ffmpeg_cmd, '-y', '-i', abs_src,
+                        '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                        '-movflags', '+faststart', abs_dst
+                    ],
+                    capture_output=True, timeout=300
+                )
+            if result.returncode == 0 and os.path.exists(abs_dst):
+                logger.info(f"[FFmpeg] H.264 transcode OK: {os.path.basename(abs_dst)}")
+                # Remove the raw intermediate file
+                try:
+                    if abs_src != abs_dst:
+                        os.remove(abs_src)
+                except OSError as e:
+                    logger.warning(f"Could not remove raw file {abs_src}: {e}")
+                return True
+            else:
+                stderr = result.stderr.decode(errors='ignore')[-1000:]
+                stdout = result.stdout.decode(errors='ignore')[-1000:]
+                logger.warning(f"[FFmpeg] Transcode failed (rc={result.returncode}):\nSTDOUT: {stdout}\nSTDERR: {stderr}")
+                return False
         except FileNotFoundError:
-            logger.warning("[FFmpeg] ffmpeg not found — keeping original codec. Install ffmpeg for H.264 output.")
+            logger.warning("[FFmpeg] ffmpeg not found — video saved as raw AVI. Install ffmpeg for H.264 MP4 output.")
+            return False
         except subprocess.TimeoutExpired:
-            logger.warning("[FFmpeg] Transcode timed out — keeping original file.")
+            logger.warning("[FFmpeg] Transcode timed out — keeping raw file.")
+            return False
         except Exception as e:
             logger.error(f"[FFmpeg] Unexpected error: {e}")
-        finally:
-            if os.path.exists(tmp_path):
+            return False
+
+    def _fallback_reencode_to_mp4(self, src_path, dst_path):
+        """Fallback conversion using OpenCV so the file is still browser-playable."""
+        try:
+            abs_src = os.path.abspath(src_path)
+            abs_dst = os.path.abspath(dst_path)
+            capture = cv2.VideoCapture(abs_src)
+            if not capture.isOpened():
+                logger.warning(f"[OpenCV] Unable to reopen source for fallback encoding: {abs_src}")
+                return False
+
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            writer = cv2.VideoWriter(abs_dst, fourcc, self.fps, self.resolution)
+            if not writer.isOpened():
+                logger.warning(f"[OpenCV] Unable to open fallback writer: {abs_dst}")
+                capture.release()
+                return False
+
+            frame_count = 0
+            while True:
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    break
+                frame = cv2.resize(frame, self.resolution)
+                writer.write(frame)
+                frame_count += 1
+
+            capture.release()
+            writer.release()
+
+            if frame_count > 0 and os.path.exists(abs_dst):
+                logger.info(f"[OpenCV] Fallback MP4 encode OK: {os.path.basename(abs_dst)} ({frame_count} frames)")
                 try:
-                    os.remove(tmp_path)
+                    if abs_src != abs_dst and os.path.exists(abs_src):
+                        os.remove(abs_src)
                 except OSError:
                     pass
+                return True
+
+            logger.warning(f"[OpenCV] Fallback encode produced no frames: {abs_src}")
+            return False
+        except Exception as e:
+            logger.error(f"[OpenCV] Fallback encode failed: {e}")
+            return False
 
     # ------------------------------------------------------------------
     # Upload worker
@@ -327,35 +486,93 @@ class RealtimeVideoRecorder:
 
     def _store_to_file_fallback(self, task):
         try:
+            filename = os.path.basename(task['filepath'])
+            cloud_url = None
+            
+            # 1. Upload to GridFS
+            if self.fs:
+                try:
+                    with open(task['filepath'], 'rb') as f:
+                        file_id = self.fs.put(
+                            f, 
+                            filename=filename, 
+                            camera_id=task['camera_id'],
+                            start_time=task['start_time'],
+                            duration=task['duration']
+                        )
+                        # We'll use a custom internal URL pattern
+                        cloud_url = f"gridfs://{file_id}"
+                        logger.info(f"Uploaded to GridFS: {filename} (ID: {file_id})")
+                except Exception as e:
+                    logger.error(f"GridFS upload failed: {e}")
+
+            # 2. Store Metadata in MongoDB
+            if self.db is not None:
+                try:
+                    self.db.recordings.insert_one({
+                        'filename': filename,
+                        'camera_id': task['camera_id'],
+                        'start_time': task['start_time'].isoformat(),
+                        'end_time': task['end_time'].isoformat(),
+                        'duration': task['duration'],
+                        'file_size': task['file_size'],
+                        'cloud_url': cloud_url,
+                        'storage': 'mongodb',
+                        'created_at': datetime.now().isoformat()
+                    })
+                    logger.info(f"Metadata stored in MongoDB: {filename}")
+                except Exception as e:
+                    logger.error(f"MongoDB metadata storage failed: {e}")
+
+            # 3. Local JSON Fallback (as secondary backup)
             with open(self.recordings_file, 'r') as f:
                 recordings = json.load(f)
 
             entry = {
-                'filename':   os.path.basename(task['filepath']),
-                'camera_id':  task['camera_id'],
-                'start_time': task['start_time'].isoformat(),
-                'end_time':   task['end_time'].isoformat(),
-                'duration':   task['duration'],
-                'file_size':  task['file_size'],
-                'stored_at':  datetime.now().isoformat(),
-                'storage':    'local',
+                'filename':        filename,
+                'filepath':        os.path.abspath(task['filepath']).replace('\\', '/'),
+                'camera_id':       task['camera_id'],
+                'start_time':      task['start_time'].isoformat(),
+                'end_time':        task['end_time'].isoformat(),
+                'duration':        task['duration'],
+                'duration_seconds': int(task['duration']),
+                'file_size':       task['file_size'],
+                'file_size_bytes': task['file_size'],   # alias so Laravel+frontend filter works
+                'cloud_url':       cloud_url,
+                'stored_at':       datetime.now().isoformat(),
+                'storage':         'mongodb' if cloud_url else 'local',
             }
             recordings.append(entry)
 
-            # Notify Laravel
-            try:
-                api_url = os.getenv('API_URL', 'http://localhost:8000/api')
-                payload = {
-                    'camera_id':        task['camera_id'],
-                    'filename':         os.path.basename(task['filepath']),
-                    'filepath':         os.path.abspath(task['filepath']).replace('\\', '/'),
-                    'duration_seconds': int(task['duration']),
-                    'people_count':     0,
-                    'file_size_bytes':  task['file_size'],
-                }
-                requests.post(f"{api_url}/recordings", json=payload, timeout=5)
-            except Exception as e:
-                logger.error(f"Laravel notification failed: {e}")
+            # Notify Laravel with retries
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    api_url = os.getenv('API_URL', 'http://localhost:8000/api')
+                    payload = {
+                        'camera_id':        task['camera_id'],
+                        'filename':         filename,
+                        'cloud_url':        cloud_url,
+                        'filepath':         os.path.abspath(task['filepath']).replace('\\', '/'),
+                        'duration_seconds': int(task['duration']),
+                        'people_count':     0,
+                        'file_size_bytes':  task['file_size'],
+                        'frame_count':      int(task['duration'] * self.fps),
+                        'fps':              self.fps,
+                        'start_time':       task['start_time'].isoformat(),
+                        'end_time':         task['end_time'].isoformat()
+                    }
+                    response = requests.post(f"{api_url}/recordings", json=payload, timeout=15)
+                    if response.status_code in [200, 201]:
+                        logger.info(f"Successfully notified Laravel for recording: {filename}")
+                        break
+                    else:
+                        logger.warning(f"Laravel notification attempt {attempt+1} failed ({response.status_code}): {response.text[:100]}")
+                except Exception as e:
+                    logger.error(f"Laravel notification attempt {attempt+1} error: {e}")
+                
+                if attempt < max_retries - 1:
+                    time.sleep(2) # Wait before retry
 
             # Prune entries older than 7 days
             cutoff = datetime.now() - timedelta(days=7)
@@ -368,7 +585,7 @@ class RealtimeVideoRecorder:
                 json.dump(recordings, f, indent=2)
 
         except Exception as e:
-            logger.error(f"File fallback error: {e}")
+            logger.error(f"Storage worker error: {e}")
 
     # ------------------------------------------------------------------
     # Status / shutdown

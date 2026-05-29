@@ -11,8 +11,13 @@ except ImportError:
     CORS_AVAILABLE = False
 from datetime import datetime, timedelta
 from collections import deque
-import threading
 import logging
+from face_search import FaceSearcher
+import os
+from dotenv import load_dotenv
+import threading
+
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -20,16 +25,28 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 if CORS_AVAILABLE:
-    CORS(app)  # Enable CORS for all routes
-else:
-    logger.warning("flask_cors not available, installing manually")
-    # Add manual CORS headers
-    @app.after_request
-    def add_cors_headers(response):
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        return response
+    CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
+
+# Always add CORS headers via after_request (belt and suspenders approach)
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    return response
+
+@app.before_request
+def handle_preflight():
+    """Handle OPTIONS preflight requests from browsers"""
+    from flask import request as req
+    if req.method == 'OPTIONS':
+        from flask import make_response
+        resp = make_response('', 200)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        resp.headers['Access-Control-Max-Age'] = '86400'
+        return resp
 
 # In-memory data storage
 data_storage = deque(maxlen=1000)  # Keep last 1000 records
@@ -41,6 +58,9 @@ current_stats = {
     'timestamp': datetime.now().isoformat()
 }
 lock = threading.Lock()
+
+# Initialize face searcher
+face_searcher = FaceSearcher()
 
 
 @app.route('/api/health', methods=['GET'])
@@ -182,6 +202,35 @@ def get_stats_summary():
         'status': 'success',
         'data': summary
     }), 200
+
+
+@app.route('/api/face-search', methods=['POST'])
+def face_search():
+    """
+    Search for a person by face image and find matching recordings
+    Payload: { 'image': 'base64_string' }
+    """
+    try:
+        data = request.get_json()
+        if not data or 'image' not in data:
+            return jsonify({'status': 'error', 'message': 'No image provided'}), 400
+        
+        image_b64 = data['image']
+        person_matches = face_searcher.search_by_image(image_b64)
+        recording_matches = face_searcher.search_recordings_by_image(image_b64)
+        
+        return jsonify({
+            'status': 'success',
+            'results': recording_matches,
+            'recording_matches': recording_matches,
+            'person_matches': person_matches,
+            'count': len(recording_matches),
+            'person_count': len(person_matches)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Face search API error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/', methods=['GET'])

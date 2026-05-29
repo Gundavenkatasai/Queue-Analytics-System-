@@ -20,9 +20,17 @@ const HeatmapView = () => {
       // Handle the response structure from AnalyticsTimelineController
       const actualHeatmap = data.heatmap || (data.data && data.data.heatmap);
       
-      if (actualHeatmap) {
+      if (actualHeatmap && Array.isArray(actualHeatmap)) {
         setHeatmapData(actualHeatmap);
-        const max = Math.max(...actualHeatmap.flat());
+        // Flatten 2D array safely to find max
+        let max = 0;
+        for (let r = 0; r < actualHeatmap.length; r++) {
+          if (Array.isArray(actualHeatmap[r])) {
+            for (let c = 0; c < actualHeatmap[r].length; c++) {
+              if (actualHeatmap[r][c] > max) max = actualHeatmap[r][c];
+            }
+          }
+        }
         setMaxIntensity(max > 0 ? max : 1);
       }
     } catch (error) {
@@ -36,30 +44,34 @@ const HeatmapView = () => {
     fetchHeatmapData();
   }, [fetchHeatmapData]);
 
+  // Color function with HIGH VISIBILITY for dark backgrounds
   const getHeatColor = (value) => {
-    if (value === 0) return 'rgba(255, 255, 255, 0.02)';
+    if (value === 0) return 'rgba(30, 41, 59, 0.8)'; // Slate-800 — visible dark tile
     const intensity = value / maxIntensity;
     
-    // Enterprise Dark Theme Gradient (Deep Blue -> Cyan -> Yellow -> Coral)
-    if (intensity < 0.2) return `rgba(14, 165, 233, ${intensity + 0.2})`; // Light Sky Blue
-    if (intensity < 0.5) return `rgba(16, 185, 129, ${intensity + 0.3})`; // Emerald
-    if (intensity < 0.8) return `rgba(245, 158, 11, ${intensity + 0.4})`; // Amber
-    return `rgba(239, 68, 68, ${intensity + 0.2})`; // Red
+    // Solid, bright colors that pop on dark backgrounds
+    if (intensity < 0.2) return `rgba(56, 189, 248, ${0.4 + intensity * 2})`; // Sky-400
+    if (intensity < 0.4) return `rgba(34, 211, 238, ${0.5 + intensity})`; // Cyan-400
+    if (intensity < 0.6) return `rgba(52, 211, 153, ${0.6 + intensity * 0.5})`; // Emerald-400
+    if (intensity < 0.8) return `rgba(251, 191, 36, ${0.7 + intensity * 0.3})`; // Amber-400
+    return `rgba(248, 113, 113, ${0.8 + intensity * 0.2})`; // Red-400
   };
 
   const GRID_SIZE = 20;
   const gridCells = [];
 
-  if (heatmapData.length > 0) {
-    for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
-      const value = heatmapData[i] || 0;
-      gridCells.push({
-        id: i,
-        value,
-        color: getHeatColor(value),
-        row: Math.floor(i / GRID_SIZE),
-        col: i % GRID_SIZE
-      });
+  if (heatmapData.length > 0 && Array.isArray(heatmapData[0])) {
+    for (let row = 0; row < GRID_SIZE; row++) {
+      for (let col = 0; col < GRID_SIZE; col++) {
+        const value = (heatmapData[row] && heatmapData[row][col]) ? heatmapData[row][col] : 0;
+        gridCells.push({
+          id: row * GRID_SIZE + col,
+          value,
+          color: getHeatColor(value),
+          row,
+          col
+        });
+      }
     }
   }
 
@@ -130,42 +142,73 @@ const HeatmapView = () => {
               </div>
             ) : gridCells.length > 0 ? (
               <>
-                <div className="relative aspect-square w-full max-w-2xl mx-auto border border-white/10 rounded-xl overflow-hidden bg-black/50 shadow-inner">
-                  {/* Overlay Grid Lines for tech aesthetic */}
-                  <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none mix-blend-overlay"></div>
-                  
+                <div className="relative aspect-square w-full max-w-2xl mx-auto rounded-xl overflow-hidden shadow-inner" style={{ backgroundColor: '#0f172a' }}>
+                  {/* Grid */}
                   <div 
-                    className="absolute inset-0 grid"
-                    style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))` }}
+                    className="absolute inset-0 grid gap-[1px]"
+                    style={{ 
+                      gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
+                      backgroundColor: 'rgba(51, 65, 85, 0.3)'
+                    }}
                   >
                     {gridCells.map(cell => (
                       <div
                         key={cell.id}
-                        className="w-full h-full border border-white/[0.02] transition-colors duration-300 hover:border-white/30"
+                        className="w-full h-full transition-all duration-300 hover:scale-110 hover:z-10 cursor-crosshair relative group"
                         style={{ 
                           backgroundColor: cell.color,
-                          boxShadow: cell.value > 0 ? `0 0 15px ${cell.color}` : 'none'
+                          boxShadow: cell.value > 0 ? `inset 0 0 8px ${cell.color}, 0 0 12px ${cell.color}` : 'none'
                         }}
                         title={`Zone (${cell.row}, ${cell.col}) | Density: ${cell.value}`}
-                      />
+                      >
+                        {/* Tooltip on hover */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-20 pointer-events-none">
+                          <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap border border-white/10">
+                            ({cell.row},{cell.col}): {cell.value}
+                          </div>
+                        </div>
+                      </div>
                     ))}
+                  </div>
+
+                  {/* Axis Labels */}
+                  <div className="absolute -bottom-6 left-0 right-0 flex justify-between px-1">
+                    <span className="text-[10px] text-gray-500">0</span>
+                    <span className="text-[10px] text-gray-500">← X Axis →</span>
+                    <span className="text-[10px] text-gray-500">{GRID_SIZE}</span>
                   </div>
                 </div>
 
                 {/* Legend */}
-                <div className="mt-8 flex items-center justify-center space-x-6 text-sm text-gray-400 bg-black/20 p-4 rounded-xl border border-white/5 w-max mx-auto">
-                  <span className="font-semibold text-gray-300 mr-2">Density:</span>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-white/5 border border-white/10" /> Minimal</div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-sky-500/50" /> Low</div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-emerald-500/60" /> Medium</div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-amber-500/70" /> High</div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-red-500/80" /> Critical</div>
+                <div className="mt-10 flex flex-wrap items-center justify-center gap-4 text-sm text-gray-300 bg-slate-900/60 p-4 rounded-xl border border-white/10 w-max mx-auto">
+                  <span className="font-semibold text-gray-200 mr-1">Density:</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded" style={{ backgroundColor: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(148,163,184,0.3)' }} />
+                    <span className="text-gray-400">None</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded" style={{ backgroundColor: 'rgba(56, 189, 248, 0.6)' }} />
+                    <span className="text-gray-400">Low</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded" style={{ backgroundColor: 'rgba(52, 211, 153, 0.7)' }} />
+                    <span className="text-gray-400">Medium</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded" style={{ backgroundColor: 'rgba(251, 191, 36, 0.85)' }} />
+                    <span className="text-gray-400">High</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded" style={{ backgroundColor: 'rgba(248, 113, 113, 0.9)' }} />
+                    <span className="text-gray-400">Critical</span>
+                  </div>
                 </div>
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center py-20 text-gray-500">
                 <Target className="w-16 h-16 mb-4 opacity-20" />
-                <p>No spatial data available for this date</p>
+                <p className="text-gray-400">No spatial data available for this date.</p>
+                <p className="text-sm text-gray-600 mt-2">Run the ML service to generate heatmap data.</p>
               </div>
             )}
           </motion.div>
@@ -184,7 +227,7 @@ const HeatmapView = () => {
             </h3>
             
             <div className="space-y-4">
-              <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+              <div className="bg-black/30 p-4 rounded-xl border border-white/10">
                 <p className="text-gray-400 text-sm mb-1">Peak Zone Intensity</p>
                 <div className="flex items-end gap-2">
                   <span className="text-3xl font-bold text-white">{Math.ceil(maxIntensity)}</span>
@@ -192,25 +235,25 @@ const HeatmapView = () => {
                 </div>
               </div>
 
-              <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+              <div className="bg-black/30 p-4 rounded-xl border border-white/10">
                 <p className="text-gray-400 text-sm mb-1">Active Floor Coverage</p>
                 <div className="flex items-end gap-2">
                   <span className="text-3xl font-bold text-white">{Math.round((activeCells / (GRID_SIZE * GRID_SIZE)) * 100)}%</span>
                 </div>
-                <div className="w-full bg-white/5 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div className="w-full bg-white/10 h-2 rounded-full mt-3 overflow-hidden">
                   <div 
-                    className="h-full bg-primary rounded-full" 
+                    className="h-full bg-gradient-to-r from-sky-400 to-emerald-400 rounded-full transition-all duration-500" 
                     style={{ width: `${(activeCells / (GRID_SIZE * GRID_SIZE)) * 100}%` }}
                   />
                 </div>
               </div>
 
-              <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+              <div className="bg-black/30 p-4 rounded-xl border border-white/10">
                 <p className="text-gray-400 text-sm mb-1">Total Detections Logged</p>
                 <span className="text-2xl font-bold text-white">{totalDetections.toLocaleString()}</span>
               </div>
 
-              <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+              <div className="bg-black/30 p-4 rounded-xl border border-white/10">
                 <p className="text-gray-400 text-sm mb-1">Avg Zone Density</p>
                 <span className="text-2xl font-bold text-white">{avgIntensity}</span>
               </div>

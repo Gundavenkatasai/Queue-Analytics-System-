@@ -16,6 +16,16 @@ class SystemManager:
         self.processes = {}
         self.log_file = 'system_startup.log'
         self.base_path = os.path.dirname(os.path.abspath(__file__))
+        self.log_files = {}
+        self.logs_dir = os.path.join(self.base_path, 'logs')
+        os.makedirs(self.logs_dir, exist_ok=True)
+
+    def get_log_handle(self, name, type_):
+        key = f"{name}_{type_}"
+        if key not in self.log_files:
+            filepath = os.path.join(self.logs_dir, f"{key}.log")
+            self.log_files[key] = open(filepath, 'a', encoding='utf-8')
+        return self.log_files[key]
         
     def log(self, message, level='INFO'):
         """Log message with timestamp"""
@@ -40,11 +50,13 @@ class SystemManager:
             except:
                 pass
             
+            stdout_handle = self.get_log_handle('backend', 'stdout')
+            stderr_handle = self.get_log_handle('backend', 'stderr')
             # Start server
             proc = subprocess.Popen(
                 ['php', 'artisan', 'serve', '--port=8000'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
                 universal_newlines=True
             )
             self.processes['backend'] = proc
@@ -82,11 +94,13 @@ class SystemManager:
             except:
                 pass
             
+            stdout_handle = self.get_log_handle('frontend', 'stdout')
+            stderr_handle = self.get_log_handle('frontend', 'stderr')
             # Start server
             proc = subprocess.Popen(
                 ['npm', 'start'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
                 universal_newlines=True,
                 env={**os.environ, 'BROWSER': 'none'}
             )
@@ -118,14 +132,27 @@ class SystemManager:
             ml_path = os.path.join(self.base_path, 'ml-service')
             os.chdir(ml_path)
             
-            # Check Python environment
-            python_cmd = 'python'  # or 'python3'
+            # Detect virtual environment Python interpreter
+            if sys.platform.startswith('win'):
+                venv_python = os.path.join(ml_path, 'venv', 'Scripts', 'python.exe')
+            else:
+                venv_python = os.path.join(ml_path, 'venv', 'bin', 'python')
+                
+            if os.path.exists(venv_python):
+                python_cmd = venv_python
+                self.log(f"Using virtual environment Python: {python_cmd}", "INFO")
+            else:
+                python_cmd = 'python'
+                self.log(f"Virtual environment Python not found at {venv_python}. Using global python command.", "WARN")
             
-            # Start service with simulator mode
+            stdout_handle = self.get_log_handle('ml_service', 'stdout')
+            stderr_handle = self.get_log_handle('ml_service', 'stderr')
+            
+            # Start service
             proc = subprocess.Popen(
                 [python_cmd, 'main.py'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
                 universal_newlines=True,
                 env={
                     **os.environ,
@@ -235,6 +262,14 @@ class SystemManager:
                     self.log(f"✓ Force killed {name}", "INFO")
                 except:
                     self.log(f"✗ Failed to stop {name}", "ERROR")
+        
+        # Close all open log file handles
+        for key, handle in self.log_files.items():
+            try:
+                handle.close()
+            except:
+                pass
+        self.log_files.clear()
 
 if __name__ == "__main__":
     manager = SystemManager()

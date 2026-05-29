@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AnalyticsTimelineController;
 use App\Http\Controllers\RecordingsController;
@@ -9,7 +10,23 @@ use App\Http\Controllers\AlertsController;
 use App\Http\Controllers\HeatmapController;
 use App\Http\Controllers\HealthController;
 
+// ── Global OPTIONS preflight handler ─────────────────────────────────────────
+// Browsers send an OPTIONS request before every cross-origin POST/PUT.
+// This catches ALL api/* OPTIONS requests and returns the CORS headers.
+Route::options('/{any}', function () {
+    return response('', 200)
+        ->header('Access-Control-Allow-Origin', '*')
+        ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+        ->header('Access-Control-Max-Age', '86400');
+})->where('any', '.*');
+
 Route::get('/health', [HealthController::class, 'health']);
+
+// ── Authentication routes (no auth middleware needed) ─────────────────────────
+Route::post('/auth/register', [AuthController::class, 'register']);
+Route::post('/auth/google', [AuthController::class, 'googleLogin']);
+Route::post('/auth/login', [AuthController::class, 'login']);
 
 Route::middleware('api')->group(function () {
     // Real-time Analytics Timeline (from ML Service)
@@ -34,6 +51,7 @@ Route::middleware('api')->group(function () {
     // Recordings endpoints
     Route::post('/recordings', [RecordingsController::class, 'store']);
     Route::get('/recordings', [RecordingsController::class, 'index']);
+    Route::get('/recordings/file/{filename}/stream', [RecordingsController::class, 'streamByFilename'])->where('filename', '.*');
     Route::get('/recordings/{id}', [RecordingsController::class, 'show']);
     Route::get('/recordings/{id}/stream', [RecordingsController::class, 'stream']);
     Route::delete('/recordings/{id}', [RecordingsController::class, 'destroy']);
@@ -48,4 +66,7 @@ Route::middleware('api')->group(function () {
     Route::post('/heatmap', [HeatmapController::class, 'store']);
     Route::get('/heatmap/{date}', [HeatmapController::class, 'getByDate']);
     Route::get('/heatmap/{date}/hour/{hour}', [HeatmapController::class, 'getByHour']);
+
+    // Face Search endpoint
+    Route::post('/analytics/face-search', [AnalyticsTimelineController::class, 'faceSearch']);
 });

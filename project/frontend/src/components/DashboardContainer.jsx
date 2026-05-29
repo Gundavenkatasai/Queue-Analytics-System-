@@ -10,6 +10,7 @@ import ReportsView from './ReportsView';
 import HeatmapView from './HeatmapView';
 import AlertsView from './AlertsView';
 import SettingsView from './SettingsView';
+import FaceSearchView from './FaceSearchView';
 
 const DashboardContainer = ({ activeTab }) => {
     const renderView = () => {
@@ -28,6 +29,8 @@ const DashboardContainer = ({ activeTab }) => {
                 return <AlertsView />;
             case 'settings':
                 return <SettingsView />;
+            case 'search':
+                return <FaceSearchView />;
             default:
                 return <Dashboard />;
         }
